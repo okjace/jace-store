@@ -34,7 +34,7 @@ export default async function Home() {
           </form>
           <div className="mt-5 flex flex-wrap gap-2 text-sm">
             <Link href="/new" className="btn-ghost">Upload your stuff →</Link>
-            <span className="self-center text-muted">{count ?? 0} projects and counting</span>
+            <span className="self-center text-muted">{count ?? 0} {count === 1 ? "project" : "projects"} and counting</span>
           </div>
         </div>
       </section>
