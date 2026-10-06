@@ -250,3 +250,6 @@ create policy "users manage own objects" on storage.objects for update to authen
 drop policy if exists "users delete own objects" on storage.objects;
 create policy "users delete own objects" on storage.objects for delete to authenticated
   using (bucket_id in ('project-files','icons') and owner_id = auth.uid()::text);
+
+-- Make the Data API see the changes right away.
+notify pgrst, 'reload schema';

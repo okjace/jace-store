@@ -31,3 +31,6 @@ create policy "tokens owner read" on public.api_tokens for select using (auth.ui
 drop policy if exists "tokens owner delete" on public.api_tokens;
 create policy "tokens owner delete" on public.api_tokens for delete using (auth.uid() = user_id);
 -- Tokens are created server-side (service role) so the plaintext never touches the DB.
+
+-- Make the Data API see the changes right away.
+notify pgrst, 'reload schema';

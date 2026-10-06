@@ -15,3 +15,6 @@ alter table public.projects add column if not exists gallery text[] not null def
 
 -- 3. Allow bigger images (gallery screenshots, wallpapers) in the image bucket.
 update storage.buckets set file_size_limit = 10485760 where id = 'icons';  -- 10 MB
+
+-- Make the Data API see the changes right away.
+notify pgrst, 'reload schema';
