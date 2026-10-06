@@ -24,5 +24,5 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // Skip static assets and the public launcher API (no session needed there).
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/v2|api/download|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/v2|api/launcher|api/download|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };

@@ -72,6 +72,14 @@ export default function Launchers() {
         <Link href="/pack" className="btn-primary mt-4">Open pack builder</Link>
       </section>
 
+      <section className="card border-brand/40 p-6">
+        <h2 className="text-xl font-bold">Building a launcher?</h2>
+        <p className="mt-1 text-sm text-muted">
+          Use the Launcher API to put a full Jace Store browser inside your launcher: search, one-call install resolution and batch update checks.
+        </p>
+        <Link href="/developers/launchers" className="btn-primary mt-4">Launcher API docs</Link>
+      </section>
+
       <section id="api">
         <h2 className="text-2xl font-black">Public API</h2>
         <p className="mt-2 text-muted">
