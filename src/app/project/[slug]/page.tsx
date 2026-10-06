@@ -8,6 +8,7 @@ import ProjectIcon from "@/components/ProjectIcon";
 import InstallPanel from "@/components/InstallPanel";
 import AddToPackButton from "@/components/AddToPackButton";
 import DownloadButton, { type DlVersion } from "@/components/DownloadButton";
+import ReportButton from "@/components/ReportButton";
 
 const PACKABLE = ["mod", "resourcepack", "shader"];
 
@@ -27,6 +28,7 @@ async function load(slug: string) {
     project: project as Project,
     versions: (versions ?? []) as Version[],
     isOwner: auth.user?.id === project.owner_id,
+    signedIn: !!auth.user,
   };
 }
 
@@ -38,7 +40,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function ProjectPage({ params }: { params: Promise<{ slug: string }> }) {
   const data = await load((await params).slug);
   if (!data) notFound();
-  const { project, versions, isOwner } = data;
+  const { project, versions, isOwner, signedIn } = data;
   const info = typeInfo(project.type);
   const mode = project.download_mode ?? "latest";
   // The version the Download button points at: the owner's pick, or the newest.
@@ -193,6 +195,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
                 {project.source_url && <a className="text-brand underline" href={project.source_url} rel="nofollow noopener" target="_blank">Source</a>}
                 {project.issues_url && <a className="text-brand underline" href={project.issues_url} rel="nofollow noopener" target="_blank">Issues</a>}
               </Info>
+            )}
+            {!isOwner && (
+              <div className="border-t border-line pt-3">
+                <ReportButton projectId={project.id} projectTitle={project.title} signedIn={signedIn}
+                  loginHref={`/login?next=${encodeURIComponent(`/project/${project.slug}`)}`} />
+              </div>
             )}
             <Info title="API">
               <code className="break-all text-xs text-muted">{siteUrl()}/api/v2/project/{project.slug}</code>

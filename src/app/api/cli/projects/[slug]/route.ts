@@ -2,6 +2,7 @@ import { ApiError, handler, ownedProject, readJson, requireApiUser } from "@/lib
 import { siteUrl } from "@/lib/constants";
 import { fileOut, PROJECT_FIELDS } from "@/lib/cliSerialize";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { deleteProjectCompletely } from "@/lib/moderation";
 import type { FileRow } from "@/lib/types";
 
 type Ctx = { params: Promise<{ slug: string }> };
@@ -52,10 +53,6 @@ export const PATCH = handler(async (req, { params }: Ctx) => {
 export const DELETE = handler(async (req, { params }: Ctx) => {
   const userId = await requireApiUser(req);
   const project = await ownedProject(userId, (await params).slug);
-  const admin = createAdminClient();
-  const { data: versions } = await admin.from("versions").select("files(storage_path)").eq("project_id", project.id);
-  const paths = (versions ?? []).flatMap((v) => (v.files as { storage_path: string | null }[]).map((f) => f.storage_path)).filter(Boolean) as string[];
-  await admin.from("projects").delete().eq("id", project.id);
-  if (paths.length) await admin.storage.from("project-files").remove(paths);
+  await deleteProjectCompletely(project.id);
   return { deleted: project.slug };
 });

@@ -3,6 +3,8 @@ import { requireUser } from "@/lib/requireUser";
 import { formatNumber, timeAgo, typeInfo } from "@/lib/constants";
 import type { Project } from "@/lib/types";
 import ProjectIcon from "@/components/ProjectIcon";
+import { isAdmin } from "@/lib/moderation";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const metadata = { title: "Dashboard" };
 
@@ -13,6 +15,10 @@ export default async function Dashboard() {
     supabase.from("projects").select("*").eq("owner_id", user.id).order("updated_at", { ascending: false }),
   ]);
   const list = (projects ?? []) as Project[];
+  const moderator = await isAdmin(user.id);
+  const openReports = moderator
+    ? (await createAdminClient().from("reports").select("id", { count: "exact", head: true }).eq("status", "open")).count ?? 0
+    : 0;
   const total = list.reduce((a, p) => a + p.downloads, 0);
 
   return (
@@ -58,6 +64,11 @@ export default async function Dashboard() {
           </div>
         )}
         <Link href="/settings" className="btn-primary w-full">Account settings</Link>
+        {moderator && (
+          <Link href="/admin/reports" className="btn-ghost w-full">
+            Reports {openReports > 0 && <span className="rounded bg-red-500/20 px-1.5 text-xs text-red-300">{openReports}</span>}
+          </Link>
+        )}
         {profile && <Link href={`/user/${profile.username}`} className="btn-ghost w-full">View public profile</Link>}
         <Link href="/dashboard/tokens" className="btn-ghost w-full">CLI & API tokens</Link>
         <form action="/auth/signout" method="post">
