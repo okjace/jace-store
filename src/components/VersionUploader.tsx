@@ -21,6 +21,9 @@ export default function VersionUploader({ project, userId }: { project: Project;
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [links, setLinks] = useState<{ url: string; label: string; filename: string }[]>([]);
+  const setLink = (i: number, patch: Partial<(typeof links)[number]>) =>
+    setLinks(links.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
   async function pickFiles(list: FileList | null) {
     const picked = [...(list ?? [])];
@@ -42,7 +45,8 @@ export default function VersionUploader({ project, userId }: { project: Project;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!files.length) return setError("Pick at least one file.");
+    const cleanLinks = links.filter((l) => l.url.trim());
+    if (!files.length && !cleanLinks.length) return setError("Pick a file or add a download link.");
     if (info.minecraft && !gameVersions.length) return setError("Select at least one Minecraft version.");
     setBusy(true);
     setError(null);
@@ -74,10 +78,28 @@ export default function VersionUploader({ project, userId }: { project: Project;
       });
       if (vErr) throw vErr.code === "23505" ? new Error("A version with that number already exists.") : vErr;
       versionId = vid;
-      const { error: fErr } = await supabase.from("files").insert(fileRows);
-      if (fErr) throw fErr;
+      if (fileRows.length) {
+        const { error: fErr } = await supabase.from("files").insert(fileRows);
+        if (fErr) throw fErr;
+      }
+      for (const [i, l] of cleanLinks.entries()) {
+        setStatus(info.minecraft ? `Verifying link ${i + 1} (downloading to compute hashes)…` : `Adding link ${i + 1}…`);
+        const res = await fetch(`/api/cli/versions/${vid}/files`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            kind: "link",
+            url: l.url.trim(),
+            label: l.label.trim() || undefined,
+            filename: l.filename.trim() || undefined,
+            primary: !fileRows.length && i === 0,
+          }),
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(`Link ${l.url}: ${out.error ?? res.statusText}`);
+      }
 
-      setFiles([]); setVersionNumber(""); setName(""); setChangelog("");
+      setFiles([]); setLinks([]); setVersionNumber(""); setName(""); setChangelog("");
       setStatus("Published!");
       router.refresh();
     } catch (err) {
@@ -105,10 +127,32 @@ export default function VersionUploader({ project, userId }: { project: Project;
           </div>
         ) : (
           <div className="text-muted">
-            Click to choose {info.accept === "*" ? "files" : info.accept} (max 500 MB). The first file is the primary download.
+            Click to choose {info.accept === "*" ? "files" : info.accept} (max 500 MB), or add download links below. The first file is the primary download.
           </div>
         )}
       </label>
+
+      <div>
+        <div className="mb-1 flex items-center justify-between">
+          <span className="label mb-0!">Custom download links</span>
+          <button type="button" className="text-sm text-brand hover:underline"
+            onClick={() => setLinks([...links, { url: "", label: "", filename: "" }])}>+ Add link</button>
+        </div>
+        <p className="mb-2 text-xs text-muted">
+          Host files elsewhere (GitHub Releases, your own CDN, Google Drive…) and list them here.
+          {info.minecraft && " For Minecraft content the link is downloaded once to compute SHA-1/SHA-512 so launchers can verify it. It must be a direct file link."}
+        </p>
+        <div className="space-y-2">
+          {links.map((l, i) => (
+            <div key={i} className="grid gap-2 sm:grid-cols-[2fr_1fr_1fr_auto]">
+              <input className="input" type="url" placeholder="https://github.com/you/repo/releases/download/v1/file.jar" value={l.url} onChange={(e) => setLink(i, { url: e.target.value })} />
+              <input className="input" placeholder="Label (e.g. Windows)" value={l.label} onChange={(e) => setLink(i, { label: e.target.value })} />
+              <input className="input" placeholder="Filename (optional)" value={l.filename} onChange={(e) => setLink(i, { filename: e.target.value })} />
+              <button type="button" className="btn-danger px-3!" onClick={() => setLinks(links.filter((_, j) => j !== i))} aria-label="Remove link">✕</button>
+            </div>
+          ))}
+        </div>
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <div>

@@ -1,8 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { formatNumber, timeAgo } from "@/lib/constants";
+import { formatBytes, formatNumber, timeAgo } from "@/lib/constants";
 import type { Project, Version } from "@/lib/types";
 
 export default function ManageVersions({ project, versions }: { project: Project; versions: Version[] }) {
@@ -12,24 +11,34 @@ export default function ManageVersions({ project, versions }: { project: Project
 
   async function removeVersion(v: Version) {
     if (!confirm(`Delete version ${v.version_number}? This can't be undone.`)) return;
-    setBusy(v.id);
-    const supabase = createClient();
-    const paths = v.files?.map((f) => f.storage_path) ?? [];
-    const { error } = await supabase.from("versions").delete().eq("id", v.id);
-    if (!error && paths.length) await supabase.storage.from("project-files").remove(paths);
+    await call(`/api/cli/versions/${v.id}`, { method: "DELETE" }, v.id);
+  }
+
+  async function call(url: string, init: RequestInit, key: string) {
+    setBusy(key);
+    setError(null);
+    const res = await fetch(url, { ...init, headers: { "Content-Type": "application/json" } });
+    const out = await res.json().catch(() => ({}));
     setBusy(null);
-    if (error) return setError(error.message);
+    if (!res.ok) return setError(out.error ?? res.statusText);
     router.refresh();
+  }
+
+  function addLink(v: Version) {
+    const url = prompt("Direct download URL for this version:");
+    if (!url) return;
+    const label = prompt("Button label (optional, e.g. \"Windows\" or \"Mirror\"):") ?? "";
+    call(`/api/cli/versions/${v.id}/files`, { method: "POST", body: JSON.stringify({ kind: "link", url, label: label || undefined }) }, `link-${v.id}`);
   }
 
   async function removeProject() {
     if (prompt(`Type "${project.slug}" to permanently delete this project and all its files.`) !== project.slug) return;
     setBusy("project");
-    const supabase = createClient();
-    const paths = versions.flatMap((v) => v.files?.map((f) => f.storage_path) ?? []);
-    const { error } = await supabase.from("projects").delete().eq("id", project.id);
-    if (error) { setBusy(null); return setError(error.message); }
-    if (paths.length) await supabase.storage.from("project-files").remove(paths);
+    const res = await fetch(`/api/cli/projects/${project.slug}`, { method: "DELETE" });
+    if (!res.ok) {
+      setBusy(null);
+      return setError((await res.json().catch(() => ({}))).error ?? res.statusText);
+    }
     router.push("/dashboard");
     router.refresh();
   }
@@ -40,11 +49,29 @@ export default function ManageVersions({ project, versions }: { project: Project
         <h2 className="border-b border-line px-6 py-4 text-lg font-bold">Versions ({versions.length})</h2>
         <ul className="divide-y divide-line">
           {versions.map((v) => (
-            <li key={v.id} className="flex items-center gap-3 px-6 py-3 text-sm">
-              <div className="flex-1">
-                <b>{v.name}</b> <span className="text-muted">{v.version_number} · {v.release_channel} · {timeAgo(v.created_at)} · {formatNumber(v.downloads)} dl</span>
+            <li key={v.id} className="px-6 py-3 text-sm">
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <b>{v.name}</b> <span className="text-muted">{v.version_number} · {v.release_channel} · {timeAgo(v.created_at)} · {formatNumber(v.downloads)} dl</span>
+                </div>
+                <button onClick={() => addLink(v)} disabled={busy === `link-${v.id}`} className="btn-ghost px-3! py-1! text-xs">
+                  {busy === `link-${v.id}` ? "Adding…" : "+ Link"}
+                </button>
+                <button onClick={() => removeVersion(v)} disabled={busy === v.id} className="btn-danger px-3! py-1! text-xs">Delete</button>
               </div>
-              <button onClick={() => removeVersion(v)} disabled={busy === v.id} className="btn-danger px-3! py-1! text-xs">Delete</button>
+              <ul className="mt-2 space-y-1 pl-3">
+                {v.files?.map((f) => (
+                  <li key={f.id} className="flex items-center gap-2 text-xs text-muted">
+                    <span>{f.is_external ? "↗ link" : "↓ file"}</span>
+                    <span className="truncate text-text">{f.label ? `${f.label} · ` : ""}{f.filename}</span>
+                    {f.size ? <span>{formatBytes(f.size)}</span> : null}
+                    {f.is_primary && <span className="chip chip-on">primary</span>}
+                    {f.is_external && !f.sha1 && <span className="chip" title="Couldn't download it to verify">unverified</span>}
+                    <button onClick={() => confirm(`Remove ${f.filename}?`) && call(`/api/cli/files/${f.id}`, { method: "DELETE" }, f.id)}
+                      disabled={busy === f.id} className="ml-auto text-red-300 hover:underline">remove</button>
+                  </li>
+                ))}
+              </ul>
             </li>
           ))}
           {versions.length === 0 && <li className="px-6 py-4 text-muted">No versions yet — upload one above.</li>}

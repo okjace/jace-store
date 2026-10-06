@@ -14,9 +14,7 @@ export async function hashFile(file: File) {
   return { sha1: hex(sha1), sha512: hex(sha512) };
 }
 
-export function safeFilename(name: string) {
-  return name.replace(/[^a-zA-Z0-9._+-]/g, "_").slice(0, 120) || "file";
-}
+export { safeFilename } from "./filenames";
 
 /** Upload to the public bucket under the user's folder; returns the public URL. */
 export async function uploadToBucket(

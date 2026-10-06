@@ -34,9 +34,11 @@ export const preflight = () => new NextResponse(null, { status: 204, headers: CO
 
 export function serializeFile(f: FileRow) {
   return {
-    hashes: { sha1: f.sha1, sha512: f.sha512 },
+    hashes: f.sha1 && f.sha512 ? { sha1: f.sha1, sha512: f.sha512 } : {},
     url: `${siteUrl()}/api/download/${f.id}`,
     direct_url: f.url,
+    external: f.is_external,
+    label: f.label,
     filename: f.filename,
     primary: f.is_primary,
     size: f.size,

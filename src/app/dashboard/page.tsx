@@ -46,6 +46,7 @@ export default async function Dashboard() {
       <aside className="space-y-4">
         {profile && <ProfileForm profile={profile as Profile} />}
         {profile && <Link href={`/user/${profile.username}`} className="btn-ghost w-full">View public profile</Link>}
+        <Link href="/dashboard/tokens" className="btn-ghost w-full">CLI & API tokens</Link>
         <form action="/auth/signout" method="post">
           <button className="btn-ghost w-full">Sign out</button>
         </form>

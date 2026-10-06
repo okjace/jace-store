@@ -35,12 +35,14 @@ export interface FileRow {
   id: string;
   version_id: string;
   filename: string;
-  storage_path: string;
+  storage_path: string | null;
   url: string;
-  size: number;
-  sha1: string;
-  sha512: string;
+  size: number | null;
+  sha1: string | null;
+  sha512: string | null;
   is_primary: boolean;
+  is_external: boolean;
+  label: string | null;
 }
 
 export interface Version {

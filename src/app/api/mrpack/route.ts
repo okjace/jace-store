@@ -15,7 +15,7 @@ const LOADER_KEYS: Record<string, string> = {
 /**
  * GET /api/mrpack?v=<versionId>,<versionId>&name=My+Pack&mc=1.21.1&loader=fabric&loader_version=0.16.14
  * Builds a Modrinth-format modpack (.mrpack) that Prism Launcher, ATLauncher and
- * the Modrinth App can import. Files are referenced by URL, not embedded.
+ * the Modrinth App can import. Files are referenced by URL (uploads or custom links), not embedded.
  */
 export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams;
@@ -37,7 +37,9 @@ export async function GET(req: Request) {
 
   const files = [];
   for (const v of (data ?? []) as unknown as { files: FileRow[]; project: { type: string; slug: string } }[]) {
-    const f = v.files.find((x) => x.is_primary) ?? v.files[0];
+    // Launchers verify every file, so only files with known hashes can go in a pack.
+    const verified = v.files.filter((x) => x.sha1 && x.sha512 && x.size);
+    const f = verified.find((x) => x.is_primary) ?? verified[0];
     const dir = typeInfo(v.project.type).installDir;
     if (!f || !dir || !["mod", "resourcepack", "shader"].includes(v.project.type)) continue;
     const clientOnly = v.project.type !== "mod";
@@ -46,7 +48,7 @@ export async function GET(req: Request) {
       hashes: { sha1: f.sha1, sha512: f.sha512 },
       env: { client: "required", server: clientOnly ? "unsupported" : "required" },
       downloads: [f.url],
-      fileSize: f.size,
+      fileSize: f.size!,
     });
   }
 

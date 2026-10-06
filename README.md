@@ -20,6 +20,8 @@ Next.js (App Router) on **Vercel**, with **Supabase** for auth, Postgres and fil
   - Per-launcher install instructions on every project (Prism/MultiMC, Modrinth App, ATLauncher, CurseForge App, official launcher)
   - "Copy URL" for importing modpacks into Prism/MultiMC by URL
   - **Pack builder**: pick mods/resource packs/shaders and export a `.mrpack` for Prism, ATLauncher or the Modrinth App
+  - **CLI for publishing** (`public/jace-store.mjs`, served at `/jace-store.mjs`) with personal API tokens: see `/dashboard/tokens`
+  - **Custom download links** per version; links for Minecraft content are hashed server-side so launchers can verify them
   - **Modrinth-v2-style public API** at `/api/v2` (search, projects, versions, hash lookup, update checks) — see `/launchers`
 
 ## Setup

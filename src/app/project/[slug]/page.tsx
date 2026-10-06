@@ -119,8 +119,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
                         />
                       )}
                       {v.files?.map((f) => (
-                        <a key={f.id} href={`/api/download/${f.id}`} className="btn-primary px-3! py-1.5! text-xs" title={`sha1 ${f.sha1}`}>
-                          ↓ {f.filename.length > 28 ? f.filename.slice(0, 25) + "…" : f.filename} ({formatBytes(f.size)})
+                        <a key={f.id} href={`/api/download/${f.id}`} rel={f.is_external ? "nofollow noopener" : undefined}
+                          className={`${f.is_primary ? "btn-primary" : "btn-ghost"} px-3! py-1.5! text-xs`}
+                          title={[f.is_external && `Link: ${new URL(f.url).hostname}`, f.sha1 && `sha1 ${f.sha1}`].filter(Boolean).join("\n")}>
+                          {f.is_external ? "↗" : "↓"} {short(f.label || f.filename)}{f.size ? ` (${formatBytes(f.size)})` : ""}
                         </a>
                       ))}
                     </div>
@@ -180,6 +182,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
     </div>
   );
 }
+
+const short = (s: string) => (s.length > 32 ? s.slice(0, 29) + "…" : s);
 
 function Info({ title, children }: { title: string; children: React.ReactNode }) {
   return (
