@@ -151,6 +151,16 @@ end $$;
 grant execute on function public.increment_downloads(uuid) to anon, authenticated;
 
 -- ---------------------------------------------------------------------------
+-- Data API access. Explicit so this works even with "Automatically expose new
+-- tables" turned off. Row Level Security below decides which rows each role
+-- can actually touch.
+-- ---------------------------------------------------------------------------
+grant usage on schema public to anon, authenticated;
+grant select on public.profiles, public.projects, public.versions, public.files to anon, authenticated;
+grant insert, update, delete on public.projects, public.versions, public.files to authenticated;
+grant update on public.profiles to authenticated;
+
+-- ---------------------------------------------------------------------------
 -- Row Level Security
 -- ---------------------------------------------------------------------------
 alter table public.profiles enable row level security;
