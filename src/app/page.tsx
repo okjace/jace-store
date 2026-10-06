@@ -6,7 +6,8 @@ import type { Project } from "@/lib/types";
 
 export const revalidate = 60;
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ deleted?: string }> }) {
+  const { deleted } = await searchParams;
   const supabase = await createClient();
   const select = "*, owner:profiles(username, display_name, avatar_url)";
   const [{ data: popular }, { data: fresh }, { count }] = await Promise.all([
@@ -17,6 +18,7 @@ export default async function Home() {
 
   return (
     <div className="space-y-14">
+      {deleted && <p className="card border-brand/40 p-4 text-sm text-brand">Your account and everything in it has been deleted.</p>}
       <section className="card relative overflow-hidden p-8 sm:p-12">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_15%,rgba(74,222,128,.20),transparent_50%),radial-gradient(circle_at_10%_100%,rgba(96,165,250,.12),transparent_45%)]" />
         <div className="relative max-w-3xl">

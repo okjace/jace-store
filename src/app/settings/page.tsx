@@ -5,15 +5,17 @@ import type { Profile } from "@/lib/types";
 import ProfileSettings from "@/components/settings/ProfileSettings";
 import EmailPassword from "@/components/settings/EmailPassword";
 import SignInMethods from "@/components/settings/SignInMethods";
+import DeleteAccount from "@/components/settings/DeleteAccount";
 
 export const metadata = { title: "Account settings" };
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ linked?: string; error?: string }> }) {
   const sp = await searchParams;
   const { supabase, user } = await requireUser("/settings");
-  const [{ data: profile }, { data: jace }] = await Promise.all([
+  const [{ data: profile }, { data: jace }, { count: projectCount }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).single(),
     supabase.from("jace_links").select("jace_username").eq("user_id", user.id).maybeSingle(),
+    supabase.from("projects").select("id", { count: "exact", head: true }).eq("owner_id", user.id),
   ]);
   const github = user.identities?.find((i) => i.provider === "github") ?? null;
   const gd = github?.identity_data as Record<string, string> | undefined;
@@ -43,6 +45,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <p className="mt-1 text-muted">Publish from scripts, CI or an AI assistant.</p>
         <Link href="/dashboard/tokens" className="btn-ghost mt-3">CLI & API tokens</Link>
       </div>
+      {profile && <DeleteAccount username={profile.username} projectCount={projectCount ?? 0} />}
     </div>
   );
 }
