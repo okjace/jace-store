@@ -21,6 +21,7 @@ export interface Project {
   loaders: string[];
   game_versions: string[];
   icon_url: string | null;
+  gallery: string[];
   source_url: string | null;
   issues_url: string | null;
   license: string | null;

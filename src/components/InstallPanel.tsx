@@ -28,8 +28,8 @@ export default function InstallPanel(p: Props) {
 
   return (
     <div className="card p-4">
-      <h3 className="mb-3 font-bold">Install with a launcher</h3>
-      <div className="mb-3 flex flex-wrap gap-1.5">
+      <h3 className="mb-3 font-bold">{info.minecraft ? "Install with a launcher" : "How to use it"}</h3>
+      <div className={`mb-3 flex flex-wrap gap-1.5 ${launchers.length < 2 ? "hidden" : ""}`}>
         {launchers.map((l) => (
           <button
             key={l.id}
@@ -48,7 +48,7 @@ export default function InstallPanel(p: Props) {
       )}
       <div className="mt-4 flex gap-2">
         <a href={p.downloadUrl} className="btn-primary flex-1">Download</a>
-        <button type="button" onClick={copy} className="btn-ghost" title="Direct file URL for launcher import">
+        <button type="button" onClick={copy} className="btn-ghost" title="Direct file URL">
           {copied ? "Copied!" : "Copy URL"}
         </button>
       </div>
@@ -61,17 +61,85 @@ const Code = ({ children }: { children: React.ReactNode }) => (
   <code className="rounded bg-panel-2 px-1 text-text">{children}</code>
 );
 
+const list = (xs: string[]) => xs.map((x) => x.replace(/-/g, " ")).join(", ");
+
+/** Instructions for everything that isn't Minecraft content. */
+function genericSteps(p: Props): React.ReactNode[] {
+  const f = <b>{p.filename}</b>;
+  const zipped = /\.(zip|7z|rar)$/i.test(p.filename);
+  const on = p.loaders.length ? list(p.loaders) : null;
+  switch (p.type) {
+    case "game":
+      return [
+        <>Download {f}{on && <> for {on}</>}.</>,
+        zipped ? <>Extract the archive and run the game&apos;s executable.</> : <>Run the installer or open the file.</>,
+        <>Check the description for controls and system requirements.</>,
+      ];
+    case "gamemod":
+      return [
+        on ? <>This mod is for <b className="capitalize">{on}</b>.</> : null,
+        <>Back up your saves, then download {f}.</>,
+        <>Install it with your usual mod manager (Vortex, Mod Organizer 2, r2modman…) or copy it into the game&apos;s mod folder.</>,
+        <>Check the description for load order and requirements.</>,
+      ].filter(Boolean);
+    case "extension":
+      return [
+        <>Download {f}{zipped ? <> and extract it to a folder</> : null}.</>,
+        <><b>Chrome / Edge / Brave:</b> open <Code>chrome://extensions</Code>, turn on Developer mode, click <b>Load unpacked</b> and pick the folder.</>,
+        <><b>Firefox:</b> open <Code>about:debugging</Code> → This Firefox → <b>Load Temporary Add-on</b>, or install a signed <Code>.xpi</Code> directly.</>,
+      ];
+    case "script":
+      return [
+        <>Download {f}{on && <> ({on})</>}.</>,
+        <>Read the description for dependencies and setup.</>,
+        <>Only run scripts you trust. Look through the code first.</>,
+      ];
+    case "theme":
+      return [
+        <>Download {f}{on && <> for <span className="capitalize">{on}</span></>}.</>,
+        <>Install it from the app&apos;s theme/appearance settings, or copy it into its themes folder.</>,
+        <>See the description for app-specific steps.</>,
+      ];
+    case "asset":
+      return [
+        <>Download {f}{on && <> ({on})</>}.</>,
+        <>Import it into your engine or 3D tool (e.g. drag into Blender, Unity or Godot).</>,
+        <>Check the license before using it in a released project.</>,
+      ];
+    case "art":
+      return [
+        <>Download {f}.</>,
+        <>Set it as your wallpaper or open it in your image editor.</>,
+        <>Respect the creator&apos;s license if you share or reuse it.</>,
+      ];
+    case "audio":
+      return [
+        <>Download {f}.</>,
+        <>Play it, or drop it into your DAW, video editor or game project.</>,
+        <>Check the license for use in videos, streams or games.</>,
+      ];
+    case "font":
+      return [
+        <>Download {f}{zipped ? <> and extract it</> : null}.</>,
+        <><b>Windows:</b> right-click the font file → <b>Install</b>. <b>macOS:</b> double-click → <b>Install Font</b>. <b>Linux:</b> copy to <Code>~/.local/share/fonts</Code>.</>,
+        <>Restart apps so they see the new font.</>,
+      ];
+    case "template":
+      return [
+        <>Download {f}{on && <> for <span className="capitalize">{on}</span></>}.</>,
+        <>Open or import it in that app and make a copy to edit.</>,
+      ];
+    default:
+      return [
+        <>Download {f}{on && <> ({on})</>}.</>,
+        <>Follow the instructions in the description.</>,
+      ];
+  }
+}
+
 function buildLaunchers(p: Props, dir: string | null): Launcher[] {
-  if (p.type === "app") {
-    return [{
-      id: "app",
-      name: "Install",
-      steps: [
-        <>Download <b>{p.filename}</b>.</>,
-        <>Supported platforms: {p.loaders.join(", ") || "see description"}.</>,
-        <>Follow the setup instructions in the project description.</>,
-      ],
-    }];
+  if (!typeInfo(p.type).minecraft) {
+    return [{ id: "use", name: "How to use", steps: genericSteps(p) }];
   }
 
   if (p.type === "modpack") {

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { siteUrl } from "@/lib/constants";
 
-export const metadata = { title: "Launcher support & API" };
+export const metadata = { title: "Minecraft launcher support & API" };
 
 const LAUNCHERS = [
   {
@@ -48,7 +48,7 @@ export default function Launchers() {
   return (
     <div className="mx-auto max-w-4xl space-y-10">
       <section>
-        <h1 className="text-3xl font-black">Launcher support</h1>
+        <h1 className="text-3xl font-black">Minecraft launcher support</h1>
         <p className="mt-2 text-muted">
           Every project page has an <b>Install with a launcher</b> panel with step-by-step instructions for the launcher you use.
           Here&apos;s the overview.

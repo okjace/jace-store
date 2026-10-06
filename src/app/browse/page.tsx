@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { GAME_VERSIONS, PROJECT_TYPES, SORTS, typeInfo } from "@/lib/constants";
+import { GAME_VERSIONS, GROUPS, PROJECT_TYPES, SORTS, groupInfo, typeInfo, typesInGroup } from "@/lib/constants";
 import ProjectCard from "@/components/ProjectCard";
 import type { Project } from "@/lib/types";
 
@@ -10,13 +10,15 @@ type SP = Record<string, string | undefined>;
 
 export async function generateMetadata({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
-  return { title: sp.type ? typeInfo(sp.type).plural : "Browse" };
+  return { title: sp.type ? typeInfo(sp.type).plural : groupInfo(sp.group ?? "")?.label ?? "Browse everything" };
 }
 
 export default async function Browse({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const type = PROJECT_TYPES.some((t) => t.id === sp.type) ? sp.type : undefined;
   const info = type ? typeInfo(type) : null;
+  const group = info?.group ?? (GROUPS.some((g) => g.id === sp.group) ? sp.group : undefined);
+  const showVersions = info ? info.minecraft : group === "minecraft";
   const q = (sp.q ?? "").trim();
   const loader = sp.loader;
   const version = sp.version;
@@ -29,6 +31,7 @@ export default async function Browse({ searchParams }: { searchParams: Promise<S
     .from("projects")
     .select("*, owner:profiles(username, display_name, avatar_url)", { count: "exact" });
   if (type) query = query.eq("type", type);
+  else if (group) query = query.in("type", typesInGroup(group).map((t) => t.id));
   if (q) {
     const safe = q.replace(/[%,()]/g, " ");
     query = query.or(`title.ilike.%${safe}%,summary.ilike.%${safe}%`);
@@ -56,16 +59,26 @@ export default async function Browse({ searchParams }: { searchParams: Promise<S
   return (
     <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
       <aside className="space-y-5">
+        <FilterGroup title="Section">
+          <FilterLink href={link({ group: undefined, type: undefined, loader: undefined, category: undefined, version: undefined })} on={!group}>Everything</FilterLink>
+          {GROUPS.map((g) => (
+            <FilterLink key={g.id} href={link({ group: g.id, type: undefined, loader: undefined, category: undefined, version: g.id === "minecraft" ? sp.version : undefined })} on={group === g.id}>
+              {g.label}
+            </FilterLink>
+          ))}
+        </FilterGroup>
         <FilterGroup title="Type">
-          <FilterLink href={link({ type: undefined, loader: undefined, category: undefined })} on={!type}>All</FilterLink>
-          {PROJECT_TYPES.map((t) => (
-            <FilterLink key={t.id} href={link({ type: t.id, loader: undefined, category: undefined })} on={type === t.id}>
-              {t.plural}
+          {group && (
+            <FilterLink href={link({ group, type: undefined, loader: undefined, category: undefined })} on={!type}>All {groupInfo(group)?.label}</FilterLink>
+          )}
+          {(group ? typesInGroup(group) : PROJECT_TYPES).map((t) => (
+            <FilterLink key={t.id} href={link({ group: t.group, type: t.id, loader: undefined, category: undefined })} on={type === t.id}>
+              <span aria-hidden className="mr-1">{t.icon}</span>{t.plural}
             </FilterLink>
           ))}
         </FilterGroup>
         {info && (
-          <FilterGroup title={info.id === "app" ? "Platform" : "Loader"}>
+          <FilterGroup title={info.loaderLabel}>
             {info.loaders.map((l) => (
               <FilterLink key={l} href={link({ loader: loader === l ? undefined : l })} on={loader === l}>
                 <span className="capitalize">{l}</span>
@@ -82,7 +95,7 @@ export default async function Browse({ searchParams }: { searchParams: Promise<S
             ))}
           </FilterGroup>
         )}
-        {type !== "app" && (
+        {showVersions && (
           <FilterGroup title="Minecraft version">
             <form action="/browse" className="w-full">
               {Object.entries(sp).map(([k, v]) =>
@@ -103,7 +116,7 @@ export default async function Browse({ searchParams }: { searchParams: Promise<S
           {Object.entries(sp).map(([k, v]) =>
             !["q", "sort", "page"].includes(k) && v ? <input key={k} type="hidden" name={k} value={v} /> : null
           )}
-          <input name="q" defaultValue={q} placeholder={`Search ${info?.plural.toLowerCase() ?? "everything"}…`} className="input min-w-0 flex-1" />
+          <input name="q" defaultValue={q} placeholder={`Search ${info?.plural.toLowerCase() ?? groupInfo(group ?? "")?.label.toLowerCase() ?? "everything"}…`} className="input min-w-0 flex-1" />
           <select name="sort" defaultValue={sort} className="input w-auto!">
             {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>

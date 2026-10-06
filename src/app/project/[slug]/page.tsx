@@ -49,7 +49,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-3xl font-black">{project.title}</h1>
-            <span className="chip chip-on">{info.label}</span>
+            <Link href={`/browse?type=${info.id}`} className="chip chip-on">{info.icon} {info.label}</Link>
           </div>
           <p className="mt-1 text-muted">{project.summary}</p>
           <div className="mt-3 flex flex-wrap gap-4 text-sm text-muted">
@@ -68,7 +68,19 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
+          {project.gallery?.length > 0 && (
+            <section className="card p-3">
+              <div className="flex snap-x gap-3 overflow-x-auto">
+                {project.gallery.map((src, i) => (
+                  <a key={src} href={src} target="_blank" rel="noopener" className="shrink-0 snap-start">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={src} alt={`${project.title} screenshot ${i + 1}`} className="h-56 w-auto max-w-[80vw] rounded-lg border border-line object-cover" loading="lazy" />
+                  </a>
+                ))}
+              </div>
+            </section>
+          )}
           <section className="card p-6">
             {project.description ? <Markdown>{project.description}</Markdown> : <p className="text-muted">No description yet.</p>}
           </section>
@@ -137,10 +149,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
             />
           )}
           <div className="card space-y-4 p-4 text-sm">
-            <Info title={project.type === "app" ? "Platforms" : "Loaders"}>
+            <Info title={info.loaderLabel}>
               {project.loaders.length ? project.loaders.map((l) => <span key={l} className="chip capitalize">{l}</span>) : "—"}
             </Info>
-            {project.type !== "app" && (
+            {info.minecraft && (
               <Info title="Minecraft versions">
                 {project.game_versions.length ? summarizeVersions(project.game_versions).map((g) => <span key={g} className="chip">{g}</span>) : "—"}
               </Info>

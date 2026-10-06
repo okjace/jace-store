@@ -8,7 +8,7 @@ export default async function NewProject() {
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="mb-1 text-3xl font-black">Create a project</h1>
-      <p className="mb-6 text-muted">Set up the page first — you&apos;ll upload files on the next step.</p>
+      <p className="mb-6 text-muted">Games, apps, mods, assets, art, music: anything goes. Set up the page first, then upload files on the next step.</p>
       <ProjectForm userId={user.id} />
     </div>
   );

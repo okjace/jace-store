@@ -1,96 +1,162 @@
 export type ProjectType =
-  | "mod"
-  | "resourcepack"
-  | "shader"
-  | "datapack"
-  | "modpack"
-  | "plugin"
-  | "world"
-  | "app";
+  | "mod" | "resourcepack" | "shader" | "datapack" | "modpack" | "plugin" | "world"
+  | "game" | "gamemod"
+  | "app" | "extension" | "script" | "theme"
+  | "asset" | "art" | "audio" | "font" | "template"
+  | "other";
 
-export const PROJECT_TYPES: {
+export type GroupId = "minecraft" | "games" | "software" | "creative" | "other";
+
+export const GROUPS: { id: GroupId; label: string; blurb: string }[] = [
+  { id: "minecraft", label: "Minecraft", blurb: "Mods, packs, shaders and worlds, with launcher support" },
+  { id: "games", label: "Games", blurb: "Indie games and mods for your favourite titles" },
+  { id: "software", label: "Software", blurb: "Apps, browser extensions, scripts and themes" },
+  { id: "creative", label: "Creative", blurb: "3D assets, art, music, fonts and templates" },
+  { id: "other", label: "Other", blurb: "Anything that doesn't fit anywhere else" },
+];
+
+export interface TypeInfo {
   id: ProjectType;
+  group: GroupId;
   label: string;
   plural: string;
+  icon: string;
+  /** Minecraft content: uses game versions, launcher instructions, pack builder. */
+  minecraft: boolean;
+  /** What the "loaders" field means for this type (Loader, Platform, Game, Browser…). */
+  loaderLabel: string;
   /** Folder inside the Minecraft instance where files of this type go. */
   installDir: string | null;
+  /** <input accept>; "*" means any file. */
   accept: string;
   loaders: string[];
   categories: string[];
-}[] = [
+}
+
+export const PROJECT_TYPES: TypeInfo[] = [
+  // ---- Minecraft ----------------------------------------------------------
   {
-    id: "mod",
-    label: "Mod",
-    plural: "Mods",
-    installDir: "mods",
-    accept: ".jar",
+    id: "mod", group: "minecraft", label: "Mod", plural: "Mods", icon: "🧩", minecraft: true,
+    loaderLabel: "Loader", installDir: "mods", accept: ".jar",
     loaders: ["fabric", "forge", "neoforge", "quilt", "liteloader"],
     categories: ["adventure", "decoration", "equipment", "food", "library", "magic", "mobs", "optimization", "storage", "technology", "transportation", "utility", "worldgen"],
   },
   {
-    id: "resourcepack",
-    label: "Resource Pack",
-    plural: "Resource Packs",
-    installDir: "resourcepacks",
-    accept: ".zip",
+    id: "resourcepack", group: "minecraft", label: "Resource Pack", plural: "Resource Packs", icon: "🎨", minecraft: true,
+    loaderLabel: "Loader", installDir: "resourcepacks", accept: ".zip",
     loaders: ["minecraft"],
     categories: ["16x", "32x", "64x", "128x+", "realistic", "simplistic", "themed", "vanilla-like", "gui", "audio", "fonts", "models"],
   },
   {
-    id: "shader",
-    label: "Shader",
-    plural: "Shaders",
-    installDir: "shaderpacks",
-    accept: ".zip",
+    id: "shader", group: "minecraft", label: "Shader", plural: "Shaders", icon: "✨", minecraft: true,
+    loaderLabel: "Loader", installDir: "shaderpacks", accept: ".zip",
     loaders: ["iris", "optifine", "canvas", "vanilla"],
     categories: ["realistic", "fantasy", "semi-realistic", "cartoon", "potato", "low", "medium", "high", "screenshot"],
   },
   {
-    id: "datapack",
-    label: "Data Pack",
-    plural: "Data Packs",
-    installDir: "saves/<world>/datapacks",
-    accept: ".zip",
+    id: "datapack", group: "minecraft", label: "Data Pack", plural: "Data Packs", icon: "📦", minecraft: true,
+    loaderLabel: "Loader", installDir: "saves/<world>/datapacks", accept: ".zip",
     loaders: ["datapack"],
     categories: ["adventure", "equipment", "game-mechanics", "magic", "mobs", "utility", "worldgen"],
   },
   {
-    id: "modpack",
-    label: "Modpack",
-    plural: "Modpacks",
-    installDir: null,
-    accept: ".mrpack,.zip",
+    id: "modpack", group: "minecraft", label: "Modpack", plural: "Modpacks", icon: "🗃️", minecraft: true,
+    loaderLabel: "Loader", installDir: null, accept: ".mrpack,.zip",
     loaders: ["fabric", "forge", "neoforge", "quilt"],
     categories: ["adventure", "challenging", "combat", "kitchen-sink", "lightweight", "magic", "multiplayer", "optimization", "quests", "technology"],
   },
   {
-    id: "plugin",
-    label: "Plugin",
-    plural: "Plugins",
-    installDir: "plugins",
-    accept: ".jar",
+    id: "plugin", group: "minecraft", label: "Server Plugin", plural: "Server Plugins", icon: "🔌", minecraft: true,
+    loaderLabel: "Server", installDir: "plugins", accept: ".jar",
     loaders: ["paper", "spigot", "bukkit", "purpur", "folia", "velocity", "bungeecord", "waterfall"],
     categories: ["admin-tools", "chat", "economy", "game-mechanics", "minigame", "protection", "utility", "world-management"],
   },
   {
-    id: "world",
-    label: "World",
-    plural: "Worlds",
-    installDir: "saves",
-    accept: ".zip",
-    loaders: ["minecraft"],
+    id: "world", group: "minecraft", label: "World", plural: "Worlds", icon: "🌍", minecraft: true,
+    loaderLabel: "Edition", installDir: "saves", accept: ".zip,.mcworld",
+    loaders: ["java", "bedrock"],
     categories: ["adventure", "creation", "minigame", "parkour", "puzzle", "survival", "showcase"],
   },
+  // ---- Games --------------------------------------------------------------
   {
-    id: "app",
-    label: "App",
-    plural: "Apps",
-    installDir: null,
-    accept: "*",
+    id: "game", group: "games", label: "Game", plural: "Games", icon: "🎮", minecraft: false,
+    loaderLabel: "Platform", installDir: null, accept: "*",
+    loaders: ["windows", "macos", "linux", "android", "ios", "web", "steam-deck"],
+    categories: ["action", "adventure", "arcade", "horror", "multiplayer", "platformer", "puzzle", "racing", "rpg", "sandbox", "shooter", "simulation", "strategy", "visual-novel"],
+  },
+  {
+    id: "gamemod", group: "games", label: "Game Mod", plural: "Game Mods", icon: "🛠️", minecraft: false,
+    loaderLabel: "Game", installDir: null, accept: "*",
+    loaders: ["skyrim", "fallout-4", "stardew-valley", "terraria", "gta-v", "cyberpunk-2077", "baldurs-gate-3", "the-sims-4", "elden-ring", "rimworld", "factorio", "valheim", "minecraft-bedrock", "other-game"],
+    categories: ["gameplay", "graphics", "ui", "characters", "items", "maps", "quests", "audio", "performance", "cheats", "overhaul", "utility"],
+  },
+  // ---- Software -----------------------------------------------------------
+  {
+    id: "app", group: "software", label: "App", plural: "Apps", icon: "💻", minecraft: false,
+    loaderLabel: "Platform", installDir: null, accept: "*",
     loaders: ["windows", "macos", "linux", "android", "ios", "web", "cross-platform"],
-    categories: ["launcher", "server-tool", "map-viewer", "editor", "utility", "bot", "other"],
+    categories: ["productivity", "developer-tools", "media", "communication", "education", "gaming", "launcher", "server-tool", "security", "utility", "other"],
+  },
+  {
+    id: "extension", group: "software", label: "Browser Extension", plural: "Extensions", icon: "🧭", minecraft: false,
+    loaderLabel: "Browser", installDir: null, accept: ".zip,.crx,.xpi",
+    loaders: ["chrome", "firefox", "edge", "safari", "opera", "brave"],
+    categories: ["productivity", "privacy", "accessibility", "developer-tools", "shopping", "social", "appearance", "utility"],
+  },
+  {
+    id: "script", group: "software", label: "Script / Bot", plural: "Scripts & Bots", icon: "📜", minecraft: false,
+    loaderLabel: "Language", installDir: null, accept: "*",
+    loaders: ["python", "javascript", "typescript", "lua", "bash", "powershell", "autohotkey", "csharp", "java", "other-language"],
+    categories: ["automation", "discord-bot", "userscript", "cli", "data", "game-script", "web-scraping", "utility"],
+  },
+  {
+    id: "theme", group: "software", label: "Theme", plural: "Themes", icon: "🖌️", minecraft: false,
+    loaderLabel: "For", installDir: null, accept: "*",
+    loaders: ["windows", "macos", "linux", "vscode", "discord", "obsidian", "firefox", "android", "other-app"],
+    categories: ["dark", "light", "minimal", "colorful", "retro", "icons", "cursors", "fonts"],
+  },
+  // ---- Creative -----------------------------------------------------------
+  {
+    id: "asset", group: "creative", label: "3D / Game Asset", plural: "3D & Game Assets", icon: "🧊", minecraft: false,
+    loaderLabel: "Engine / format", installDir: null, accept: "*",
+    loaders: ["blender", "unity", "unreal", "godot", "gamemaker", "roblox-studio", "gltf", "fbx", "obj", "sprites"],
+    categories: ["characters", "environments", "props", "vehicles", "weapons", "textures", "animations", "vfx", "ui", "low-poly", "pixel-art"],
+  },
+  {
+    id: "art", group: "creative", label: "Art & Wallpaper", plural: "Art & Wallpapers", icon: "🖼️", minecraft: false,
+    loaderLabel: "Format", installDir: null, accept: "image/*,video/*,.zip,.psd,.kra,.svg",
+    loaders: ["desktop", "mobile", "4k", "animated", "png", "svg", "psd"],
+    categories: ["abstract", "anime", "fantasy", "gaming", "landscape", "minimal", "pixel-art", "sci-fi", "photography", "icons"],
+  },
+  {
+    id: "audio", group: "creative", label: "Music & Sound", plural: "Music & Sounds", icon: "🎵", minecraft: false,
+    loaderLabel: "Format", installDir: null, accept: "audio/*,.zip,.mid,.midi",
+    loaders: ["mp3", "wav", "ogg", "flac", "midi", "sample-pack"],
+    categories: ["music", "sound-effects", "loops", "ambient", "game-audio", "voice", "lofi", "electronic", "orchestral"],
+  },
+  {
+    id: "font", group: "creative", label: "Font", plural: "Fonts", icon: "🔤", minecraft: false,
+    loaderLabel: "Format", installDir: null, accept: ".ttf,.otf,.woff,.woff2,.zip",
+    loaders: ["ttf", "otf", "woff2", "variable"],
+    categories: ["sans-serif", "serif", "display", "handwritten", "monospace", "pixel", "decorative"],
+  },
+  {
+    id: "template", group: "creative", label: "Template", plural: "Templates", icon: "📐", minecraft: false,
+    loaderLabel: "For", installDir: null, accept: "*",
+    loaders: ["figma", "notion", "canva", "word", "excel", "powerpoint", "google-docs", "html", "react", "obs"],
+    categories: ["website", "resume", "presentation", "planner", "social-media", "stream-overlay", "ui-kit", "document"],
+  },
+  // ---- Other --------------------------------------------------------------
+  {
+    id: "other", group: "other", label: "Other", plural: "Other", icon: "📁", minecraft: false,
+    loaderLabel: "Platform", installDir: null, accept: "*",
+    loaders: ["windows", "macos", "linux", "android", "ios", "web", "any"],
+    categories: ["documents", "datasets", "guides", "misc"],
   },
 ];
+
+export const typesInGroup = (g: string) => PROJECT_TYPES.filter((t) => t.group === g);
+export const groupInfo = (g: string) => GROUPS.find((x) => x.id === g);
 
 export const typeInfo = (t: string) =>
   PROJECT_TYPES.find((p) => p.id === t) ?? PROJECT_TYPES[0];
@@ -110,6 +176,7 @@ export const SORTS = [
 ] as const;
 
 export const SITE_NAME = "Jace Store";
+export const TAGLINE = "The hub for everything you make";
 
 export function siteUrl() {
   return (process.env.NEXT_PUBLIC_SITE_URL ||

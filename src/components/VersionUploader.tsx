@@ -43,7 +43,7 @@ export default function VersionUploader({ project, userId }: { project: Project;
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!files.length) return setError("Pick at least one file.");
-    if (project.type !== "app" && !gameVersions.length) return setError("Select at least one Minecraft version.");
+    if (info.minecraft && !gameVersions.length) return setError("Select at least one Minecraft version.");
     setBusy(true);
     setError(null);
     const supabase = createClient();
@@ -130,7 +130,7 @@ export default function VersionUploader({ project, userId }: { project: Project;
       </div>
 
       <div>
-        <span className="label">{project.type === "app" ? "Platforms" : "Loaders"}</span>
+        <span className="label">{info.loaderLabel}</span>
         <div className="flex flex-wrap gap-1.5">
           {info.loaders.map((l) => (
             <button type="button" key={l} onClick={() => toggle(loaders, setLoaders, l)}
@@ -139,7 +139,7 @@ export default function VersionUploader({ project, userId }: { project: Project;
         </div>
       </div>
 
-      {project.type !== "app" && (
+      {info.minecraft && (
         <div>
           <span className="label">Minecraft versions</span>
           <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">

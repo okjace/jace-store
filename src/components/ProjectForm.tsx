@@ -2,10 +2,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { PROJECT_TYPES, slugify, typeInfo, type ProjectType } from "@/lib/constants";
+import { GROUPS, slugify, typeInfo, typesInGroup, type ProjectType } from "@/lib/constants";
 import { safeFilename, uploadToBucket } from "@/lib/upload";
 import type { Project } from "@/lib/types";
 import ProjectIcon from "./ProjectIcon";
+
+const MAX_SHOTS = 8;
 
 export default function ProjectForm({ project, userId }: { project?: Project; userId: string }) {
   const router = useRouter();
@@ -22,6 +24,8 @@ export default function ProjectForm({ project, userId }: { project?: Project; us
   const [license, setLicense] = useState(project?.license ?? "");
   const [icon, setIcon] = useState<File | null>(null);
   const [iconPreview, setIconPreview] = useState<string | null>(project?.icon_url ?? null);
+  const [gallery, setGallery] = useState<string[]>(project?.gallery ?? []);
+  const [newShots, setNewShots] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -41,7 +45,13 @@ export default function ProjectForm({ project, userId }: { project?: Project; us
         const ext = icon.name.split(".").pop()?.toLowerCase() || "png";
         icon_url = await uploadToBucket(supabase, "icons", `${userId}/${id}/icon-${Date.now()}.${safeFilename(ext)}`, icon);
       }
+      const uploaded: string[] = [];
+      for (const [i, shot] of newShots.entries()) {
+        const ext = shot.name.split(".").pop()?.toLowerCase() || "png";
+        uploaded.push(await uploadToBucket(supabase, "icons", `${userId}/${id}/gallery-${Date.now()}-${i}.${safeFilename(ext)}`, shot));
+      }
       const row = {
+        gallery: [...gallery, ...uploaded].slice(0, MAX_SHOTS),
         title: title.trim(),
         slug,
         summary: summary.trim(),
@@ -56,6 +66,8 @@ export default function ProjectForm({ project, userId }: { project?: Project; us
         const { error } = await supabase.from("projects").update(row).eq("id", id);
         if (error) throw error;
         setSaved(true);
+        setGallery(row.gallery);
+        setNewShots([]);
         if (slug !== project.slug) router.replace(`/project/${slug}/edit`);
         router.refresh();
       } else {
@@ -75,16 +87,23 @@ export default function ProjectForm({ project, userId }: { project?: Project; us
       {!editing && (
         <div>
           <span className="label">What are you uploading?</span>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {PROJECT_TYPES.map((t) => (
-              <button
-                type="button"
-                key={t.id}
-                onClick={() => { setType(t.id); setCategories([]); }}
-                className={`rounded-lg border p-3 text-left text-sm ${type === t.id ? "border-brand bg-brand/10" : "border-line bg-panel-2 hover:border-muted"}`}
-              >
-                <b>{t.label}</b>
-              </button>
+          <div className="space-y-3">
+            {GROUPS.map((g) => (
+              <div key={g.id}>
+                <div className="mb-1.5 text-xs text-muted">{g.label}</div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {typesInGroup(g.id).map((t) => (
+                    <button
+                      type="button"
+                      key={t.id}
+                      onClick={() => { setType(t.id); setCategories([]); }}
+                      className={`flex items-center gap-2 rounded-lg border p-2.5 text-left text-sm ${type === t.id ? "border-brand bg-brand/10" : "border-line bg-panel-2 hover:border-muted"}`}
+                    >
+                      <span aria-hidden>{t.icon}</span><b>{t.label}</b>
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </div>
@@ -148,6 +167,41 @@ export default function ProjectForm({ project, userId }: { project?: Project; us
       <div>
         <label className="label" htmlFor="desc">Description (Markdown)</label>
         <textarea id="desc" rows={12} value={description} onChange={(e) => setDescription(e.target.value)} className="input font-mono" placeholder="# Features&#10;- ..." />
+      </div>
+
+      <div>
+        <span className="label">Screenshots / previews (up to {MAX_SHOTS}, 10 MB each)</span>
+        <div className="flex flex-wrap gap-2">
+          {gallery.map((src) => (
+            <div key={src} className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={src} alt="" className="h-24 w-36 rounded-lg border border-line object-cover" />
+              <button type="button" onClick={() => setGallery(gallery.filter((g) => g !== src))}
+                className="absolute top-1 right-1 rounded bg-black/70 px-1.5 text-xs" aria-label="Remove screenshot">✕</button>
+            </div>
+          ))}
+          {newShots.map((f, i) => (
+            <div key={i} className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={URL.createObjectURL(f)} alt="" className="h-24 w-36 rounded-lg border border-brand/50 object-cover" />
+              <button type="button" onClick={() => setNewShots(newShots.filter((_, j) => j !== i))}
+                className="absolute top-1 right-1 rounded bg-black/70 px-1.5 text-xs" aria-label="Remove screenshot">✕</button>
+            </div>
+          ))}
+          {gallery.length + newShots.length < MAX_SHOTS && (
+            <label className="grid h-24 w-36 cursor-pointer place-items-center rounded-lg border-2 border-dashed border-line text-sm text-muted hover:border-brand">
+              + Add
+              <input type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif" className="hidden"
+                onChange={(e) => {
+                  const picked = [...(e.target.files ?? [])];
+                  const big = picked.find((f) => f.size > 10 * 1024 * 1024);
+                  if (big) return setError(`${big.name} is over 10 MB`);
+                  setNewShots([...newShots, ...picked].slice(0, MAX_SHOTS - gallery.length));
+                  e.target.value = "";
+                }} />
+            </label>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">

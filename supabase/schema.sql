@@ -55,8 +55,7 @@ create table if not exists public.projects (
   id uuid primary key default gen_random_uuid(),
   slug text unique not null check (slug ~ '^[a-z0-9][a-z0-9_-]{1,63}$'),
   owner_id uuid not null references public.profiles (id) on delete cascade,
-  type text not null check (type in
-    ('mod','resourcepack','shader','datapack','modpack','plugin','world','app')),
+  type text not null,
   title text not null check (length(title) between 2 and 80),
   summary text not null check (length(summary) between 3 and 256),
   description text not null default '',
@@ -71,6 +70,8 @@ create table if not exists public.projects (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Type list and gallery live in migrations/002_hub.sql (run that next).
 
 create index if not exists projects_type_idx on public.projects (type);
 create index if not exists projects_downloads_idx on public.projects (downloads desc);

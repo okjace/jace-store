@@ -17,7 +17,7 @@ export default function ProjectCard({ project }: { project: Project }) {
         </div>
         <p className="mt-0.5 line-clamp-2 text-sm text-muted">{project.summary}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <span className="chip chip-on">{typeInfo(project.type).label}</span>
+          <span className="chip chip-on">{typeInfo(project.type).icon} {typeInfo(project.type).label}</span>
           {project.loaders.slice(0, 3).map((l) => (
             <span key={l} className="chip capitalize">{l}</span>
           ))}

@@ -80,6 +80,7 @@ export function serializeProject(p: Project, versionIds: string[] = []) {
     downloads: p.downloads,
     followers: 0,
     icon_url: p.icon_url,
+    gallery: (p.gallery ?? []).map((url) => ({ url, featured: false, title: null, description: null })),
     client_side: "unknown",
     server_side: "unknown",
     status: "approved",
