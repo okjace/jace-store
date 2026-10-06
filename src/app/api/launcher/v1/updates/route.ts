@@ -22,7 +22,7 @@ export async function POST(req: Request) {
 
   const db = createPublicClient();
   const { data: files } = await db.from("files")
-    .select(`${algo}, version:versions(*, project:projects(id, slug, title, type, download_mode, primary_version_id))`)
+    .select(`${algo}, version:versions(*, project:projects!versions_project_id_fkey(id, slug, title, type, download_mode, primary_version_id))`)
     .in(algo, hashes);
 
   type Row = Record<string, unknown> & { version: Version & { project: { id: string; slug: string; title: string; type: string } } | null };
