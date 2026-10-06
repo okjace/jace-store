@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0f1115;
+  --color-panel: #171a21;
+  --color-panel-2: #1f232c;
+  --color-line: #2a2f3a;
+  --color-muted: #8b93a3;
+  --color-text: #e6e8ec;
+  --color-brand: #4ade80;
+  --color-brand-dark: #22a559;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+html { color-scheme: dark; }
+body { background: var(--color-bg); color: var(--color-text); }
+
+@utility btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+  }
+@utility btn-primary { @apply btn bg-brand text-black hover:bg-brand-dark; }
+@utility btn-ghost { @apply btn border border-line bg-panel-2 hover:border-muted; }
+@utility btn-danger { @apply btn border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20; }
+@utility input {
+    @apply w-full rounded-lg border border-line bg-panel-2 px-3 py-2 text-sm outline-none placeholder:text-muted focus:border-brand;
+  }
+@utility label { @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-muted; }
+@utility card { @apply rounded-xl border border-line bg-panel; }
+@utility chip {
+    @apply inline-flex items-center rounded-full border border-line bg-panel-2 px-2.5 py-0.5 text-xs text-muted;
+  }
+@utility chip-on { @apply border-brand/60 bg-brand/10 text-brand; }
+
+.prose-store { line-height: 1.7; }
+.prose-store h1 { font-size: 1.6rem; font-weight: 700; margin: 1.2rem 0 .6rem; }
+.prose-store h2 { font-size: 1.3rem; font-weight: 700; margin: 1.1rem 0 .5rem; }
+.prose-store h3 { font-size: 1.1rem; font-weight: 600; margin: 1rem 0 .4rem; }
+.prose-store p, .prose-store ul, .prose-store ol, .prose-store pre, .prose-store table { margin: .6rem 0; }
+.prose-store ul { list-style: disc; padding-left: 1.4rem; }
+.prose-store ol { list-style: decimal; padding-left: 1.4rem; }
+.prose-store a { color: var(--color-brand); text-decoration: underline; }
+.prose-store code { background: var(--color-panel-2); padding: .1rem .35rem; border-radius: .3rem; font-size: .9em; }
+.prose-store pre { background: var(--color-panel-2); padding: .8rem; border-radius: .5rem; overflow-x: auto; }
+.prose-store pre code { background: none; padding: 0; }
+.prose-store img { max-width: 100%; border-radius: .5rem; }
+.prose-store blockquote { border-left: 3px solid var(--color-line); padding-left: .8rem; color: var(--color-muted); }
+.prose-store table { border-collapse: collapse; }
+.prose-store th, .prose-store td { border: 1px solid var(--color-line); padding: .3rem .6rem; }
