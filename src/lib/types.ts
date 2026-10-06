@@ -26,6 +26,8 @@ export interface Project {
   issues_url: string | null;
   license: string | null;
   downloads: number;
+  download_mode: "latest" | "primary" | "all";
+  primary_version_id: string | null;
   created_at: string;
   updated_at: string;
   owner?: Pick<Profile, "username" | "display_name" | "avatar_url"> | null;

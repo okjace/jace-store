@@ -14,4 +14,4 @@ export const fileOut = (f: FileRow) => ({
   sha512: f.sha512,
 });
 
-export const PROJECT_FIELDS = ["title", "summary", "description", "categories", "source_url", "issues_url", "license"] as const;
+export const PROJECT_FIELDS = ["title", "summary", "description", "categories", "source_url", "issues_url", "license", "download_mode", "primary_version_id"] as const;

@@ -30,7 +30,20 @@ export const PATCH = handler(async (req, { params }: Ctx) => {
   const patch: Record<string, unknown> = {};
   for (const k of PROJECT_FIELDS) if (k in b) patch[k] = b[k];
   if (!Object.keys(patch).length) throw new ApiError(400, `Nothing to update. Fields: ${PROJECT_FIELDS.join(", ")}`);
-  const { data, error } = await createAdminClient().from("projects").update(patch).eq("id", project.id).select().single();
+  const admin = createAdminClient();
+  if ("download_mode" in patch && !["latest", "primary", "all"].includes(String(patch.download_mode))) {
+    throw new ApiError(400, "download_mode must be latest, primary or all");
+  }
+  if (patch.primary_version_id) {
+    const { data: v } = await admin.from("versions").select("id")
+      .eq("id", String(patch.primary_version_id)).eq("project_id", project.id).maybeSingle();
+    if (!v) throw new ApiError(400, "primary_version_id must be a version of this project");
+    if (!("download_mode" in patch)) patch.download_mode = "primary";
+  }
+  if (patch.download_mode === "primary" && !(patch.primary_version_id ?? project.primary_version_id)) {
+    throw new ApiError(400, "Pick a primary_version_id for download_mode=primary");
+  }
+  const { data, error } = await admin.from("projects").update(patch).eq("id", project.id).select().single();
   if (error) throw new ApiError(400, error.message);
   return data;
 });

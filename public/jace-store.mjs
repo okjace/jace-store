@@ -36,7 +36,13 @@ Commands:
                                       primary) unless --primary-link. Needs at least one file or link.
   add-file <versionId> <path> [--label l] [--primary]
   add-link <versionId> <url> [--label l] [--filename f] [--primary] [--skip-hash]
-  edit-version <versionId> [--name] [--changelog | --changelog-file] [--channel] [--loaders] [--game-versions]
+  edit-version <versionId> [--name] [--version-number] [--changelog | --changelog-file] [--channel]
+         [--loaders] [--game-versions]
+  download-mode <slug> latest|all|primary [--version <versionId>]
+                                      What the Download button does: newest version, a list of all
+                                      versions, or always one primary version
+  set-primary <slug> <versionId>      Shortcut for: download-mode <slug> primary --version <id>
+  edit-file <fileId> [--label l] [--filename f] [--primary]
   delete-version <versionId>
   delete-file <fileId>
 
@@ -194,6 +200,7 @@ async function main() {
       const p = await api(ctx, "GET", `/projects/${encodeURIComponent(need(pos[0], "<slug>"))}`);
       out(p, (d) => [
         `${d.title} (${d.slug}, ${d.type}) ${d.page_url}`,
+        `  download button: ${d.download_mode}${d.download_mode === "primary" ? ` (${d.primary_version_id})` : ""}`,
         ...d.versions.map((v) => [
           `  ${v.version_number}  [${v.release_channel}]  id=${v.id}  ${v.game_versions.join(",")} ${v.loaders.join(",")}`,
           ...v.files.map((f) => `     ${f.external ? "link" : "file"} ${f.primary ? "*" : " "} ${f.label ? f.label + " · " : ""}${f.filename} (${fmtBytes(f.size)}) id=${f.id}`),
@@ -280,12 +287,39 @@ async function main() {
       const id = need(pos[0], "<versionId>");
       const body = {};
       if (typeof flags.name === "string") body.name = flags.name;
+      if (typeof flags["version-number"] === "string") body.version_number = flags["version-number"];
       if (typeof flags.channel === "string") body.channel = flags.channel;
       if (flags.loaders) body.loaders = list(flags.loaders);
       if (flags["game-versions"]) body.game_versions = list(flags["game-versions"]);
       const cl = await textFlag(flags, "changelog", "changelog-file");
       if (cl !== undefined) body.changelog = cl;
       out(await api(ctx, "PATCH", `/versions/${id}`, body), (d) => `Updated version ${d.version_number}`);
+      return;
+    }
+
+    case "download-mode": {
+      const slug = need(pos[0], "<slug>");
+      const mode = need(pos[1], "latest|all|primary");
+      if (!["latest", "all", "primary"].includes(mode)) throw new CliError("mode must be latest, all or primary");
+      const body = { download_mode: mode };
+      if (mode === "primary") body.primary_version_id = need(flags.version, "--version <versionId>");
+      out(await api(ctx, "PATCH", `/projects/${encodeURIComponent(slug)}`, body), (d) => `Download button for ${d.slug}: ${d.download_mode}`);
+      return;
+    }
+
+    case "set-primary": {
+      const slug = need(pos[0], "<slug>");
+      const body = { download_mode: "primary", primary_version_id: need(pos[1], "<versionId>") };
+      out(await api(ctx, "PATCH", `/projects/${encodeURIComponent(slug)}`, body), (d) => `Primary version of ${d.slug} set`);
+      return;
+    }
+
+    case "edit-file": {
+      const body = {};
+      if (typeof flags.label === "string") body.label = flags.label;
+      if (typeof flags.filename === "string") body.filename = flags.filename;
+      if (flags.primary) body.primary = true;
+      out(await api(ctx, "PATCH", `/files/${need(pos[0], "<fileId>")}`, body), (f) => `Updated ${f.label ?? f.filename}`);
       return;
     }
 

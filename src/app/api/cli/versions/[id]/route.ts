@@ -10,13 +10,21 @@ export const PATCH = handler(async (req, { params }: Ctx) => {
   const b = await readJson<Record<string, unknown>>(req);
   const patch: Record<string, unknown> = {};
   if ("name" in b) patch.name = String(b.name);
+  if ("version_number" in b) {
+    const n = String(b.version_number).trim();
+    if (!n || n.length > 64) throw new ApiError(400, "version_number must be 1-64 characters");
+    patch.version_number = n;
+  }
   if ("changelog" in b) patch.changelog = String(b.changelog);
-  if ("channel" in b) patch.release_channel = String(b.channel);
+  if ("channel" in b) {
+    if (!["release", "beta", "alpha"].includes(String(b.channel))) throw new ApiError(400, "channel must be release, beta or alpha");
+    patch.release_channel = String(b.channel);
+  }
   if (Array.isArray(b.loaders)) patch.loaders = b.loaders.map(String);
   if (Array.isArray(b.game_versions)) patch.game_versions = b.game_versions.map(String);
   if (!Object.keys(patch).length) throw new ApiError(400, "Nothing to update");
   const { data, error } = await createAdminClient().from("versions").update(patch).eq("id", v.id).select().single();
-  if (error) throw new ApiError(400, error.message);
+  if (error) throw new ApiError(400, error.code === "23505" ? "Another version already has that number" : error.message);
   return data;
 });
 

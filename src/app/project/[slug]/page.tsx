@@ -7,6 +7,7 @@ import Markdown from "@/components/Markdown";
 import ProjectIcon from "@/components/ProjectIcon";
 import InstallPanel from "@/components/InstallPanel";
 import AddToPackButton from "@/components/AddToPackButton";
+import DownloadButton, { type DlVersion } from "@/components/DownloadButton";
 
 const PACKABLE = ["mod", "resourcepack", "shader"];
 
@@ -39,8 +40,23 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
   if (!data) notFound();
   const { project, versions, isOwner } = data;
   const info = typeInfo(project.type);
-  const latest = versions[0];
-  const latestFile = latest?.files?.find((f) => f.is_primary) ?? latest?.files?.[0];
+  const mode = project.download_mode ?? "latest";
+  // The version the Download button points at: the owner's pick, or the newest.
+  const featured =
+    (mode === "primary" && versions.find((v) => v.id === project.primary_version_id)) || versions[0];
+  const featuredFile = featured?.files?.find((f) => f.is_primary) ?? featured?.files?.[0];
+  const dlVersions: DlVersion[] = versions.map((v) => ({
+    id: v.id, name: v.name, version_number: v.version_number, release_channel: v.release_channel,
+    created_at: v.created_at, game_versions: v.game_versions, loaders: v.loaders,
+    files: (v.files ?? []).sort((a, b) => Number(b.is_primary) - Number(a.is_primary)).map((f) => ({
+      id: f.id, filename: f.filename, label: f.label, size: f.size, is_primary: f.is_primary, is_external: f.is_external,
+    })),
+  }));
+  const download = (className?: string) => (
+    <DownloadButton mode={mode} file={featuredFile ?? null} versions={dlVersions} className={className}>
+      {mode === "all" ? `Download (${versions.length} version${versions.length === 1 ? "" : "s"})` : "Download"}
+    </DownloadButton>
+  );
 
   return (
     <div className="space-y-6">
@@ -62,9 +78,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
             )}
           </div>
         </div>
-        {isOwner && (
-          <Link href={`/project/${project.slug}/edit`} className="btn-ghost">Manage project</Link>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {(featuredFile || (mode === "all" && versions.length > 0)) && download("btn-primary px-6! py-2.5! text-base")}
+          {isOwner && (
+            <Link href={`/project/${project.slug}/edit`} className="btn-ghost">Manage project</Link>
+          )}
+        </div>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
@@ -96,6 +115,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
                       <div className="flex flex-wrap items-center gap-2">
                         <b>{v.name}</b>
                         <span className="text-sm text-muted">{v.version_number}</span>
+                        {mode === "primary" && v.id === featured?.id && <span className="chip chip-on">★ primary</span>}
                         <ChannelBadge channel={v.release_channel} />
                       </div>
                       <div className="mt-1 flex flex-wrap gap-1.5">
@@ -140,14 +160,15 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
         </div>
 
         <aside className="space-y-4">
-          {latestFile && (
+          {featuredFile && (
             <InstallPanel
               type={project.type}
               title={project.title}
-              loaders={latest.loaders}
-              downloadUrl={`/api/download/${latestFile.id}`}
-              directUrl={latestFile.url}
-              filename={latestFile.filename}
+              loaders={featured.loaders}
+              directUrl={featuredFile.url}
+              filename={featuredFile.filename}
+              versionNote={mode === "all" ? `Newest: ${featured.version_number}` : featured.version_number}
+              downloadButton={download()}
             />
           )}
           <div className="card space-y-4 p-4 text-sm">

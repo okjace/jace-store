@@ -6,9 +6,12 @@ interface Props {
   type: string;
   title: string;
   loaders: string[];
-  downloadUrl: string;
   directUrl: string;
   filename: string;
+  /** Rendered Download button (handles "all versions" mode). */
+  downloadButton: React.ReactNode;
+  /** Shown above the instructions, e.g. which version this is. */
+  versionNote?: string;
 }
 
 type Launcher = { id: string; name: string; steps: React.ReactNode[] };
@@ -47,12 +50,12 @@ export default function InstallPanel(p: Props) {
         </ol>
       )}
       <div className="mt-4 flex gap-2">
-        <a href={p.downloadUrl} className="btn-primary flex-1">Download</a>
+        <div className="flex flex-1 [&>*]:flex-1">{p.downloadButton}</div>
         <button type="button" onClick={copy} className="btn-ghost" title="Direct file URL">
           {copied ? "Copied!" : "Copy URL"}
         </button>
       </div>
-      <p className="mt-2 truncate text-xs text-muted" title={p.filename}>{p.filename}</p>
+      <p className="mt-2 truncate text-xs text-muted" title={p.filename}>{p.versionNote ? `${p.versionNote} · ` : ""}{p.filename}</p>
     </div>
   );
 }
