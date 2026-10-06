@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/requireUser";
 import { formatNumber, timeAgo, typeInfo } from "@/lib/constants";
-import type { Profile, Project } from "@/lib/types";
-import ProfileForm from "@/components/ProfileForm";
+import type { Project } from "@/lib/types";
 import ProjectIcon from "@/components/ProjectIcon";
 
 export const metadata = { title: "Dashboard" };
@@ -44,7 +43,21 @@ export default async function Dashboard() {
         </div>
       </div>
       <aside className="space-y-4">
-        {profile && <ProfileForm profile={profile as Profile} />}
+        {profile && (
+          <div className="card flex items-center gap-3 p-4">
+            {profile.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={profile.avatar_url} alt="" className="h-12 w-12 rounded-full border border-line object-cover" />
+            ) : (
+              <div className="grid h-12 w-12 place-items-center rounded-full bg-panel-2 text-xl font-black">{profile.username[0].toUpperCase()}</div>
+            )}
+            <div className="min-w-0">
+              <div className="truncate font-bold">{profile.display_name || profile.username}</div>
+              <div className="truncate text-sm text-muted">@{profile.username}</div>
+            </div>
+          </div>
+        )}
+        <Link href="/settings" className="btn-primary w-full">Account settings</Link>
         {profile && <Link href={`/user/${profile.username}`} className="btn-ghost w-full">View public profile</Link>}
         <Link href="/dashboard/tokens" className="btn-ghost w-full">CLI & API tokens</Link>
         <form action="/auth/signout" method="post">

@@ -38,6 +38,14 @@ function Login() {
     router.refresh();
   }
 
+  async function forgotPassword() {
+    if (!email) return setMsg("Type your email above first, then click Forgot password.");
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent("/settings#password")}`,
+    });
+    setMsg(error ? error.message : `If ${email} has an account, a reset link is on its way. It signs you in so you can set a new password.`);
+  }
+
   async function oauth(provider: "github") {
     const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: redirectTo() } });
     if (error) setMsg(error.message);
@@ -63,6 +71,9 @@ function Login() {
             <label className="label" htmlFor="pw">Password</label>
             <input id="pw" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} className="input" autoComplete={mode === "signin" ? "current-password" : "new-password"} />
           </div>
+          {mode === "signin" && (
+            <button type="button" onClick={forgotPassword} className="text-xs text-muted hover:text-text hover:underline">Forgot password?</button>
+          )}
           {msg && <p className="text-sm text-amber-300">{msg}</p>}
           <button disabled={busy} className="btn-primary w-full">{busy ? "…" : mode === "signin" ? "Sign in" : "Sign up"}</button>
         </form>

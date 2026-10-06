@@ -10,6 +10,11 @@ export const JACE = {
 
 export const STATE_COOKIE = "jace_oauth_state";
 
+/** Login email for accounts created by "Sign in with Jace" (never receives mail). */
+export const jaceLoginEmail = (jaceId: string) =>
+  `jace-${jaceId.toLowerCase().replace(/[^a-z0-9-]/g, "")}@users.jaceo.vercel.app`;
+export const isPlaceholderEmail = (email?: string | null) => !!email?.endsWith("@users.jaceo.vercel.app");
+
 export function jaceRedirectUri() {
   return `${siteUrl()}/api/auth/jace/callback`;
 }

@@ -6,7 +6,10 @@ export async function GET(request: Request) {
   if (!clientId) {
     return NextResponse.redirect(new URL("/login?error=Jace+sign-in+is+not+configured", request.url));
   }
-  const nextParam = new URL(request.url).searchParams.get("next") ?? "/dashboard";
+  const params = new URL(request.url).searchParams;
+  // mode=link: attach Jace to the signed-in account instead of signing in.
+  const mode = params.get("mode") === "link" ? "link" : "signin";
+  const nextParam = params.get("next") ?? (mode === "link" ? "/settings" : "/dashboard");
   const next = nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/dashboard";
   const state = crypto.randomUUID();
 
@@ -20,7 +23,7 @@ export async function GET(request: Request) {
   }).toString();
 
   const res = NextResponse.redirect(url);
-  res.cookies.set(STATE_COOKIE, JSON.stringify({ state, next }), {
+  res.cookies.set(STATE_COOKIE, JSON.stringify({ state, next, mode }), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",

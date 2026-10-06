@@ -6,6 +6,12 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const nextParam = searchParams.get("next") ?? "/dashboard";
   const next = nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/dashboard";
+  const providerError = searchParams.get("error_description") || searchParams.get("error");
+  if (providerError) {
+    // e.g. linking a GitHub account that already belongs to another user
+    const back = next.startsWith("/settings") ? "/settings" : "/login";
+    return NextResponse.redirect(`${origin}${back}?error=${encodeURIComponent(providerError)}${back === "/settings" ? "#sign-in" : ""}`);
+  }
   if (code) {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
