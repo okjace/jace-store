@@ -60,7 +60,7 @@ export async function ownedVersion(userId: string, versionId: string) {
   const admin = createAdminClient();
   const { data } = await admin
     .from("versions")
-    .select("*, project:projects(id, slug, type, owner_id)")
+    .select("*, project:projects!versions_project_id_fkey(id, slug, type, owner_id)")
     .eq("id", versionId)
     .maybeSingle();
   if (!data) throw new ApiError(404, "Version not found");

@@ -9,7 +9,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   if (!UUID_RE.test(id)) return notFound("version");
   const { data } = await createPublicClient()
-    .from("versions").select("*, files(*), project:projects(owner_id)").eq("id", id).maybeSingle();
+    .from("versions").select("*, files(*), project:projects!versions_project_id_fkey(owner_id)").eq("id", id).maybeSingle();
   if (!data) return notFound("version");
   return json(serializeVersion(data as Version, (data as { project?: { owner_id: string } }).project?.owner_id));
 }

@@ -31,7 +31,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await createPublicClient()
     .from("versions")
-    .select("id, files(*), project:projects(type, slug)")
+    .select("id, files(*), project:projects!versions_project_id_fkey(type, slug)")
     .in("id", ids);
   if (error) return badRequest(error.message);
 

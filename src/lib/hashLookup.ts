@@ -15,7 +15,7 @@ export async function versionsByHashes(hashes: string[], algorithm: Algorithm) {
   const supabase = createPublicClient();
   const { data: files } = await supabase
     .from("files")
-    .select(`${algorithm}, version:versions(*, files(*), project:projects(owner_id))`)
+    .select(`${algorithm}, version:versions(*, files(*), project:projects!versions_project_id_fkey(owner_id))`)
     .in(algorithm, clean);
   for (const row of (files ?? []) as unknown as Record<string, unknown>[]) {
     const v = row.version as (Version & { project?: { owner_id: string } }) | null;

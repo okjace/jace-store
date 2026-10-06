@@ -41,7 +41,7 @@ export const POST = handler(async (req) => {
 
   // Uploaded files: everything in the user's folders, plus anything the files
   // table points at (covers files uploaded through the CLI).
-  const { data: projects } = await admin.from("projects").select("id, versions(files(storage_path))").eq("owner_id", user.id);
+  const { data: projects } = await admin.from("projects").select("id, versions!versions_project_id_fkey(files(storage_path))").eq("owner_id", user.id);
   const tracked = (projects ?? []).flatMap((p) =>
     (p.versions as { files: { storage_path: string | null }[] }[]).flatMap((v) => v.files.map((f) => f.storage_path))
   ).filter(Boolean) as string[];
