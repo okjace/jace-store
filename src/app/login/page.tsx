@@ -38,7 +38,7 @@ function Login() {
     router.refresh();
   }
 
-  async function oauth(provider: "github" | "discord" | "google") {
+  async function oauth(provider: "github") {
     const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: redirectTo() } });
     if (error) setMsg(error.message);
   }
@@ -49,7 +49,7 @@ function Login() {
         <h1 className="mb-4 text-2xl font-black">{mode === "signin" ? "Sign in" : "Create account"}</h1>
         <div className="space-y-2">
           <button onClick={() => oauth("github")} className="btn-ghost w-full">Continue with GitHub</button>
-          <button onClick={() => oauth("discord")} className="btn-ghost w-full">Continue with Discord</button>
+          <a href={`/api/auth/jace/start?next=${encodeURIComponent(next)}`} className="btn-ghost w-full">Continue with Jace</a>
         </div>
         <div className="my-4 flex items-center gap-3 text-xs text-muted">
           <div className="h-px flex-1 bg-line" />or<div className="h-px flex-1 bg-line" />

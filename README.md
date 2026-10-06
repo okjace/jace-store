@@ -5,7 +5,7 @@ Next.js (App Router) on **Vercel**, with **Supabase** for auth, Postgres and fil
 
 ## Features
 - Browse/search with filters (type, loader/platform, Minecraft version, category) and sorting
-- Accounts (email/password, GitHub, Discord) and creator dashboard
+- Accounts (email/password, GitHub, Jace) and creator dashboard
 - Projects with Markdown descriptions, icons, and multiple versions (release/beta/alpha)
 - Uploads go **directly from the browser to Supabase Storage** (up to 500 MB, bypassing Vercel's body limit); SHA-1 and SHA-512 are computed on upload
 - Auto-fills version info from `fabric.mod.json`, `quilt.mod.json`, `mods.toml`, `neoforge.mods.toml`, `plugin.yml` and `.mrpack` files
