@@ -15,7 +15,7 @@ const LAUNCHERS = [
   },
   {
     name: "Modrinth App",
-    body: <>Import any <code>.mrpack</code> — including ones made with the <Link href="/pack" className="text-brand underline">pack builder</Link> — via Create instance → Import. Drag individual files onto an instance&apos;s Content page.</>,
+    body: <>Import uploaded <code>.mrpack</code> modpacks via Create instance → Import. (Packs from the pack builder link to files hosted here, which the Modrinth App may refuse — use Prism for those.) Drag individual files onto an instance&apos;s Content page.</>,
   },
   {
     name: "ATLauncher",
