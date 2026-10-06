@@ -160,6 +160,7 @@ grant usage on schema public to anon, authenticated;
 grant select on public.profiles, public.projects, public.versions, public.files to anon, authenticated;
 grant insert, update, delete on public.projects, public.versions, public.files to authenticated;
 grant update on public.profiles to authenticated;
+grant all on public.profiles, public.projects, public.versions, public.files to service_role;
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security
