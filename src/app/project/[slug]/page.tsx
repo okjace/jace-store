@@ -9,7 +9,7 @@ import InstallPanel from "@/components/InstallPanel";
 import AddToPackButton from "@/components/AddToPackButton";
 import DownloadButton, { type DlVersion } from "@/components/DownloadButton";
 import ReportButton from "@/components/ReportButton";
-import { dependencyUrl, type Dependency } from "@/lib/dependencies";
+import { dependencyUrl, type Dependency } from "@/lib/dependencyTypes";
 
 const PACKABLE = ["mod", "resourcepack", "shader"];
 

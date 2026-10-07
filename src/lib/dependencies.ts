@@ -1,15 +1,8 @@
 import { ApiError } from "./apiAuth";
 
-export const DEP_SOURCES = ["jace", "modrinth"] as const;
-export const DEP_TYPES = ["required", "optional", "incompatible", "embedded"] as const;
+import { DEP_SOURCES, DEP_TYPES, type Dependency } from "./dependencyTypes";
 
-export interface Dependency {
-  /** Where the project lives: Jace Store or Modrinth. */
-  source: (typeof DEP_SOURCES)[number];
-  /** Project slug on that site. */
-  project: string;
-  type: (typeof DEP_TYPES)[number];
-}
+export { DEP_SOURCES, DEP_TYPES, dependencyUrl, type Dependency } from "./dependencyTypes";
 
 /**
  * Accepts [{source, project, type}] or short strings like "modrinth:fabric-api",
@@ -42,8 +35,4 @@ export function parseDependencies(input: unknown): Dependency[] {
     }
   }
   return out;
-}
-
-export function dependencyUrl(d: Dependency) {
-  return d.source === "modrinth" ? `https://modrinth.com/project/${d.project}` : `/project/${d.project}`;
 }

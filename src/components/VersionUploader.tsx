@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import { GAME_VERSIONS, formatBytes, typeInfo } from "@/lib/constants";
 import { detectMeta, hashFile, safeFilename, uploadToBucket } from "@/lib/upload";
 import type { Project } from "@/lib/types";
+import type { Dependency } from "@/lib/dependencyTypes";
+import DependencyPicker, { cleanDeps } from "./DependencyPicker";
 
 const MAX_BYTES = 500 * 1024 * 1024;
 
@@ -18,6 +20,7 @@ export default function VersionUploader({ project, userId }: { project: Project;
   const [loaders, setLoaders] = useState<string[]>([]);
   const [gameVersions, setGameVersions] = useState<string[]>([]);
   const [changelog, setChangelog] = useState("");
+  const [deps, setDeps] = useState<Dependency[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -78,6 +81,16 @@ export default function VersionUploader({ project, userId }: { project: Project;
       });
       if (vErr) throw vErr.code === "23505" ? new Error("A version with that number already exists.") : vErr;
       versionId = vid;
+      if (cleanDeps(deps).length) {
+        setStatus("Saving dependencies…");      // through the API, which checks them
+        const res = await fetch(`/api/cli/versions/${vid}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dependencies: cleanDeps(deps) }),
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(`Dependencies: ${out.error ?? res.statusText}`);
+      }
       if (fileRows.length) {
         const { error: fErr } = await supabase.from("files").insert(fileRows);
         if (fErr) throw fErr;
@@ -99,7 +112,7 @@ export default function VersionUploader({ project, userId }: { project: Project;
         if (!res.ok) throw new Error(`Link ${l.url}: ${out.error ?? res.statusText}`);
       }
 
-      setFiles([]); setLinks([]); setVersionNumber(""); setName(""); setChangelog("");
+      setFiles([]); setLinks([]); setVersionNumber(""); setName(""); setChangelog(""); setDeps([]);
       setStatus("Published!");
       router.refresh();
     } catch (err) {
@@ -194,6 +207,8 @@ export default function VersionUploader({ project, userId }: { project: Project;
           </div>
         </div>
       )}
+
+      {info.minecraft && <DependencyPicker value={deps} onChange={setDeps} idPrefix="new" />}
 
       <div>
         <label className="label" htmlFor="cl">Changelog (Markdown)</label>

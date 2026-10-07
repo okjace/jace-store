@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { GAME_VERSIONS, typeInfo } from "@/lib/constants";
 import type { Project, Version } from "@/lib/types";
+import DependencyPicker, { cleanDeps } from "./DependencyPicker";
 
 /** Inline form to change a published version's details. */
 export default function VersionEditor({
@@ -18,6 +19,7 @@ export default function VersionEditor({
   const [loaders, setLoaders] = useState(version.loaders);
   const [gameVersions, setGameVersions] = useState(version.game_versions);
   const [changelog, setChangelog] = useState(version.changelog);
+  const [deps, setDeps] = useState(version.dependencies ?? []);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const toggle = (list: string[], set: (v: string[]) => void, v: string) =>
@@ -34,7 +36,8 @@ export default function VersionEditor({
     const res = await fetch(`/api/cli/versions/${version.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, version_number: number, channel, loaders, game_versions: gameVersions, changelog }),
+      body: JSON.stringify({ name, version_number: number, channel, loaders, game_versions: gameVersions, changelog,
+        dependencies: cleanDeps(deps) }),
     });
     const out = await res.json().catch(() => ({}));
     setBusy(false);
@@ -82,6 +85,7 @@ export default function VersionEditor({
           </div>
         </div>
       )}
+      {info.minecraft && <DependencyPicker value={deps} onChange={setDeps} idPrefix={version.id} />}
       <div>
         <label className="label" htmlFor={`cl-${version.id}`}>Changelog (Markdown)</label>
         <textarea id={`cl-${version.id}`} rows={4} className="input font-mono" value={changelog} onChange={(e) => setChangelog(e.target.value)} />
