@@ -39,6 +39,8 @@ export function launcherVersion(v: Version) {
     channel: v.release_channel,
     loaders: v.loaders,
     game_versions: v.game_versions,
+    /** [{source: "jace"|"modrinth", project: slug, type: "required"|"optional"|"incompatible"|"embedded"}] */
+    dependencies: v.dependencies ?? [],
     changelog: v.changelog,
     downloads: v.downloads,
     published_at: v.created_at,

@@ -1,5 +1,6 @@
 import { ApiError, handler, ownedProject, readJson, requireApiUser } from "@/lib/apiAuth";
 import { addLinkFile, type LinkInput } from "@/lib/linkFiles";
+import { parseDependencies } from "@/lib/dependencies";
 import { fileOut } from "@/lib/cliSerialize";
 import { siteUrl, typeInfo } from "@/lib/constants";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -9,7 +10,8 @@ export const maxDuration = 300;
 /**
  * POST: create a version.
  * Body: { version_number, name?, changelog?, channel?: release|beta|alpha,
- *         loaders?: [], game_versions?: [], links?: LinkInput[] }
+ *         loaders?: [], game_versions?: [], links?: LinkInput[],
+ *         dependencies?: ["modrinth:fabric-api", "e4all", {source, project, type}] }
  * Upload files afterwards with /api/cli/versions/{id}/upload-url + /files.
  */
 export const POST = handler(async (req, { params }: { params: Promise<{ slug: string }> }) => {
@@ -25,10 +27,13 @@ export const POST = handler(async (req, { params }: { params: Promise<{ slug: st
     throw new ApiError(400, "game_versions is required for Minecraft content, e.g. [\"1.21.1\"]");
   }
 
+  const dependencies = b.dependencies == null ? [] : parseDependencies(b.dependencies);
+
   const admin = createAdminClient();
   const { data: version, error } = await admin
     .from("versions")
     .insert({
+      ...(dependencies.length ? { dependencies } : {}),
       project_id: project.id,
       version_number: versionNumber,
       name: String(b.name ?? "").trim() || versionNumber,

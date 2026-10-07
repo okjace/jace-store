@@ -32,12 +32,13 @@ Commands:
   publish <slug> --version <x.y.z> [--name n] [--channel release|beta|alpha]
          [--loaders a,b] [--game-versions 1.21.1,1.21] [--changelog text | --changelog-file f]
          [--file path]... [--link "url|label"]... [--primary-link]
+         [--depends modrinth:fabric-api,e4all,modrinth:sodium:optional]
                                       Create a version. Uploaded files come first (the first is
                                       primary) unless --primary-link. Needs at least one file or link.
   add-file <versionId> <path> [--label l] [--primary]
   add-link <versionId> <url> [--label l] [--filename f] [--primary] [--skip-hash]
   edit-version <versionId> [--name] [--version-number] [--changelog | --changelog-file] [--channel]
-         [--loaders] [--game-versions]
+         [--loaders] [--game-versions] [--depends a,b | --depends none]
   download-mode <slug> latest|all|primary [--version <versionId>]
                                       What the Download button does: newest version, a list of all
                                       versions, or always one primary version
@@ -51,6 +52,9 @@ Global flags:
 
 Notes:
   - Minecraft projects need --game-versions (and usually --loaders).
+  - --depends lists other projects this version needs: "slug" for Jace Store, "modrinth:slug"
+    for Modrinth, with an optional ":optional", ":incompatible" or ":embedded" (default required).
+    Launchers install required dependencies automatically.
   - Links for Minecraft content must be direct downloads: the server fetches them once to
     compute SHA-1/SHA-512 so launchers can verify them. Other links are hashed when possible.
   - Free Supabase plans cap uploads at 50 MB per file; use --link for bigger files.
@@ -254,6 +258,7 @@ async function main() {
         loaders: list(flags.loaders),
         game_versions: list(flags["game-versions"]),
         changelog: await textFlag(flags, "changelog", "changelog-file"),
+        ...(flags.depends ? { dependencies: list(flags.depends) } : {}),
       });
       const added = [];
       try {
@@ -291,6 +296,7 @@ async function main() {
       if (typeof flags.channel === "string") body.channel = flags.channel;
       if (flags.loaders) body.loaders = list(flags.loaders);
       if (flags["game-versions"]) body.game_versions = list(flags["game-versions"]);
+      if (flags.depends) body.dependencies = flags.depends === "none" ? [] : list(flags.depends);
       const cl = await textFlag(flags, "changelog", "changelog-file");
       if (cl !== undefined) body.changelog = cl;
       out(await api(ctx, "PATCH", `/versions/${id}`, body), (d) => `Updated version ${d.version_number}`);

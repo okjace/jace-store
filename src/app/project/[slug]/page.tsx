@@ -9,6 +9,7 @@ import InstallPanel from "@/components/InstallPanel";
 import AddToPackButton from "@/components/AddToPackButton";
 import DownloadButton, { type DlVersion } from "@/components/DownloadButton";
 import ReportButton from "@/components/ReportButton";
+import { dependencyUrl, type Dependency } from "@/lib/dependencies";
 
 const PACKABLE = ["mod", "resourcepack", "shader"];
 
@@ -54,6 +55,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
       id: f.id, filename: f.filename, label: f.label, size: f.size, is_primary: f.is_primary, is_external: f.is_external,
     })),
   }));
+  // "Requires" in the sidebar: every required dependency of the featured version.
+  const requires = (featured?.dependencies ?? []).filter((d) => d.type === "required");
   const download = (className?: string) => (
     <DownloadButton mode={mode} file={featuredFile ?? null} versions={dlVersions} className={className}>
       {mode === "all" ? `Download (${versions.length} version${versions.length === 1 ? "" : "s"})` : "Download"}
@@ -124,6 +127,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
                         {v.loaders.map((l) => <span key={l} className="chip capitalize">{l}</span>)}
                         {summarizeVersions(v.game_versions).map((g) => <span key={g} className="chip">{g}</span>)}
                       </div>
+                      {(v.dependencies ?? []).some((d) => d.type === "required") && (
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                          Requires {v.dependencies!.filter((d) => d.type === "required").map((d) => <DepLink key={d.source + d.project} d={d} />)}
+                        </div>
+                      )}
                       <div className="mt-1 text-xs text-muted">
                         {timeAgo(v.created_at)} · {formatNumber(v.downloads)} downloads
                       </div>
@@ -174,6 +182,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
             />
           )}
           <div className="card space-y-4 p-4 text-sm">
+            {requires.length > 0 && (
+              <Info title="Requires">
+                {requires.map((d) => <DepLink key={d.source + d.project} d={d} />)}
+              </Info>
+            )}
             <Info title={info.loaderLabel}>
               {project.loaders.length ? project.loaders.map((l) => <span key={l} className="chip capitalize">{l}</span>) : "—"}
             </Info>
@@ -209,6 +222,15 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
         </aside>
       </div>
     </div>
+  );
+}
+
+function DepLink({ d }: { d: Dependency }) {
+  const external = d.source !== "jace";
+  return (
+    <a href={dependencyUrl(d)} className="chip hover:text-text" {...(external ? { target: "_blank", rel: "noopener" } : {})}>
+      {d.project}{external ? " ↗" : ""}
+    </a>
   );
 }
 

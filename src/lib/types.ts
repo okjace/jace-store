@@ -56,6 +56,8 @@ export interface Version {
   release_channel: "release" | "beta" | "alpha";
   loaders: string[];
   game_versions: string[];
+  /** See lib/dependencies.ts. Empty until migration 008 is run. */
+  dependencies?: import("./dependencies").Dependency[];
   downloads: number;
   created_at: string;
   files?: FileRow[];

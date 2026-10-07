@@ -1,9 +1,10 @@
 import { ApiError, handler, ownedVersion, readJson, requireApiUser } from "@/lib/apiAuth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { parseDependencies } from "@/lib/dependencies";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-/** PATCH: edit name / changelog / channel / loaders / game_versions. */
+/** PATCH: edit name / changelog / channel / loaders / game_versions / dependencies. */
 export const PATCH = handler(async (req, { params }: Ctx) => {
   const userId = await requireApiUser(req);
   const v = await ownedVersion(userId, (await params).id);
@@ -22,6 +23,7 @@ export const PATCH = handler(async (req, { params }: Ctx) => {
   }
   if (Array.isArray(b.loaders)) patch.loaders = b.loaders.map(String);
   if (Array.isArray(b.game_versions)) patch.game_versions = b.game_versions.map(String);
+  if ("dependencies" in b) patch.dependencies = parseDependencies(b.dependencies);
   if (!Object.keys(patch).length) throw new ApiError(400, "Nothing to update");
   const { data, error } = await createAdminClient().from("versions").update(patch).eq("id", v.id).select().single();
   if (error) throw new ApiError(400, error.code === "23505" ? "Another version already has that number" : error.message);
