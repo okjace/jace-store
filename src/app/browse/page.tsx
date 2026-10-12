@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { GAME_VERSIONS, GROUPS, PROJECT_TYPES, SORTS, groupInfo, typeInfo, typesInGroup } from "@/lib/constants";
+import { BEDROCK_VERSIONS, GAME_VERSIONS, GROUPS, PROJECT_TYPES, SORTS, groupInfo, typeInfo, typesInGroup } from "@/lib/constants";
 import ProjectCard from "@/components/ProjectCard";
 import type { Project } from "@/lib/types";
 
@@ -18,7 +18,8 @@ export default async function Browse({ searchParams }: { searchParams: Promise<S
   const type = PROJECT_TYPES.some((t) => t.id === sp.type) ? sp.type : undefined;
   const info = type ? typeInfo(type) : null;
   const group = info?.group ?? (GROUPS.some((g) => g.id === sp.group) ? sp.group : undefined);
-  const showVersions = info ? info.minecraft : group === "minecraft";
+  const showVersions = info ? info.minecraft : group === "minecraft" || group === "bedrock";
+  const bedrockList = info ? info.edition === "bedrock" : group === "bedrock";
   const q = (sp.q ?? "").trim();
   const loader = sp.loader;
   const version = sp.version;
@@ -62,7 +63,7 @@ export default async function Browse({ searchParams }: { searchParams: Promise<S
         <FilterGroup title="Section">
           <FilterLink href={link({ group: undefined, type: undefined, loader: undefined, category: undefined, version: undefined })} on={!group}>Everything</FilterLink>
           {GROUPS.map((g) => (
-            <FilterLink key={g.id} href={link({ group: g.id, type: undefined, loader: undefined, category: undefined, version: g.id === "minecraft" ? sp.version : undefined })} on={group === g.id}>
+            <FilterLink key={g.id} href={link({ group: g.id, type: undefined, loader: undefined, category: undefined, version: g.id === "minecraft" || g.id === "bedrock" ? sp.version : undefined })} on={group === g.id}>
               {g.label}
             </FilterLink>
           ))}
@@ -103,7 +104,7 @@ export default async function Browse({ searchParams }: { searchParams: Promise<S
               )}
               <select name="version" defaultValue={version ?? ""} className="input">
                 <option value="">Any version</option>
-                {GAME_VERSIONS.map((v) => <option key={v}>{v}</option>)}
+                {(bedrockList ? BEDROCK_VERSIONS : GAME_VERSIONS).map((v) => <option key={v}>{v}</option>)}
               </select>
               <button className="btn-ghost mt-2 w-full">Apply</button>
             </form>

@@ -1,14 +1,16 @@
 export type ProjectType =
   | "mod" | "resourcepack" | "shader" | "datapack" | "modpack" | "plugin" | "world"
+  | "bedrock_addon" | "bedrock_texture" | "bedrock_world" | "bedrock_skin" | "bedrock_template"
   | "game" | "gamemod"
   | "app" | "extension" | "script" | "theme"
   | "asset" | "art" | "audio" | "font" | "template"
   | "other";
 
-export type GroupId = "minecraft" | "games" | "software" | "creative" | "other";
+export type GroupId = "minecraft" | "bedrock" | "games" | "software" | "creative" | "other";
 
 export const GROUPS: { id: GroupId; label: string; blurb: string }[] = [
   { id: "minecraft", label: "Minecraft", blurb: "Mods, packs, shaders and worlds, with launcher support" },
+  { id: "bedrock", label: "Minecraft Bedrock", blurb: "Add-ons, texture packs, worlds and skins for Bedrock Edition" },
   { id: "games", label: "Games", blurb: "Indie games and mods for your favourite titles" },
   { id: "software", label: "Software", blurb: "Apps, browser extensions, scripts and themes" },
   { id: "creative", label: "Creative", blurb: "3D assets, art, music, fonts and templates" },
@@ -23,6 +25,8 @@ export interface TypeInfo {
   icon: string;
   /** Minecraft content: uses game versions, launcher instructions, pack builder. */
   minecraft: boolean;
+  /** Which Minecraft: "java" (default for Minecraft types) or "bedrock" (imported, not copied). */
+  edition?: "java" | "bedrock";
   /** What the "loaders" field means for this type (Loader, Platform, Game, Browser…). */
   loaderLabel: string;
   /** Folder inside the Minecraft instance where files of this type go. */
@@ -75,6 +79,39 @@ export const PROJECT_TYPES: TypeInfo[] = [
     id: "world", group: "minecraft", label: "World", plural: "Worlds", icon: "🌍", minecraft: true,
     loaderLabel: "Edition", installDir: "saves", accept: ".zip,.mcworld",
     loaders: ["java", "bedrock"],
+    categories: ["adventure", "creation", "minigame", "parkour", "puzzle", "survival", "showcase"],
+  },
+  // ---- Minecraft Bedrock ---------------------------------------------------
+  // Files Bedrock imports itself (.mcpack, .mcaddon, .mcworld, .mctemplate): launchers
+  // import them into the game's com.mojang folder instead of copying to a fixed folder.
+  {
+    id: "bedrock_addon", group: "bedrock", edition: "bedrock", label: "Add-On", plural: "Add-Ons", icon: "🧱", minecraft: true,
+    loaderLabel: "Contains", installDir: null, accept: ".mcaddon,.mcpack,.zip",
+    loaders: ["behavior-pack", "resource-pack", "scripts"],
+    categories: ["adventure", "blocks", "decoration", "equipment", "food", "furniture", "magic", "mobs", "technology", "utility", "vehicles", "worldgen"],
+  },
+  {
+    id: "bedrock_texture", group: "bedrock", edition: "bedrock", label: "Texture Pack", plural: "Texture Packs", icon: "🎨", minecraft: true,
+    loaderLabel: "Style", installDir: null, accept: ".mcpack,.zip",
+    loaders: ["vanilla", "raytracing", "pbr", "vibrant-visuals"],
+    categories: ["16x", "32x", "64x", "128x+", "realistic", "simplistic", "themed", "vanilla-like", "gui", "audio", "fonts"],
+  },
+  {
+    id: "bedrock_world", group: "bedrock", edition: "bedrock", label: "World", plural: "Worlds", icon: "🌍", minecraft: true,
+    loaderLabel: "Mode", installDir: null, accept: ".mcworld,.zip",
+    loaders: ["survival", "creative", "adventure"],
+    categories: ["adventure", "creation", "minigame", "parkour", "puzzle", "survival", "showcase", "pvp"],
+  },
+  {
+    id: "bedrock_skin", group: "bedrock", edition: "bedrock", label: "Skin Pack", plural: "Skin Packs", icon: "🧍", minecraft: true,
+    loaderLabel: "Model", installDir: null, accept: ".mcpack,.zip",
+    loaders: ["classic", "slim", "mixed"],
+    categories: ["animals", "anime", "fantasy", "gaming", "holiday", "people", "sci-fi", "funny"],
+  },
+  {
+    id: "bedrock_template", group: "bedrock", edition: "bedrock", label: "World Template", plural: "World Templates", icon: "🗺️", minecraft: true,
+    loaderLabel: "Mode", installDir: null, accept: ".mctemplate,.zip",
+    loaders: ["survival", "creative", "adventure"],
     categories: ["adventure", "creation", "minigame", "parkour", "puzzle", "survival", "showcase"],
   },
   // ---- Games --------------------------------------------------------------
@@ -168,6 +205,17 @@ export const GAME_VERSIONS = [
   "1.18.2", "1.18.1", "1.18",
   "1.17.1", "1.17", "1.16.5", "1.16.4", "1.16.1", "1.15.2", "1.14.4", "1.13.2", "1.12.2", "1.11.2", "1.10.2", "1.9.4", "1.8.9", "1.7.10",
 ];
+
+/** Bedrock release lines (feature updates). Bedrock numbers releases 1.21.x, then 1.26.x. */
+export const BEDROCK_VERSIONS = [
+  "1.26.50", "1.26.40", "1.26.30", "1.26.20", "1.26.10", "1.26.0",
+  "1.21.130", "1.21.120", "1.21.110", "1.21.100", "1.21.90", "1.21.80", "1.21.70", "1.21.60", "1.21.50", "1.21.40", "1.21.30", "1.21.20", "1.21.0",
+  "1.20.80", "1.20.70", "1.20.60", "1.20.50", "1.20.40", "1.20.30", "1.20.10", "1.20.0",
+];
+
+/** The version list that fits a project type (Java or Bedrock). */
+export const versionsFor = (t: string) => (typeInfo(t).edition === "bedrock" ? BEDROCK_VERSIONS : GAME_VERSIONS);
+export const isBedrock = (t: string) => typeInfo(t).edition === "bedrock";
 
 export const SORTS = [
   { id: "downloads", label: "Downloads" },

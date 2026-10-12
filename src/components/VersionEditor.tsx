@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { GAME_VERSIONS, typeInfo } from "@/lib/constants";
+import { typeInfo, versionsFor } from "@/lib/constants";
 import type { Project, Version } from "@/lib/types";
 import DependencyPicker, { cleanDeps } from "./DependencyPicker";
 
@@ -26,7 +26,7 @@ export default function VersionEditor({
     set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   // Keep any values that aren't in the preset lists (e.g. set via the CLI).
   const loaderOptions = [...new Set([...info.loaders, ...version.loaders])];
-  const versionOptions = [...new Set([...GAME_VERSIONS, ...version.game_versions])];
+  const versionOptions = [...new Set([...versionsFor(project.type), ...version.game_versions])];
 
   async function save(e: React.FormEvent) {
     e.preventDefault();

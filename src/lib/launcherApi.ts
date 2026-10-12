@@ -67,6 +67,13 @@ export function launcherHit(p: Project) {
   };
 }
 
+/** How a launcher installs this type. Bedrock files (.mcpack, .mcaddon, .mcworld, .mctemplate)
+ *  are imported into the game's com.mojang folder, like double-clicking them on a phone. */
+export function installMethod(type: string) {
+  if (typeInfo(type).edition === "bedrock") return "bedrock_import";
+  return type === "modpack" ? "import_instance" : type === "plugin" ? "server_plugins" : "copy_to_directory";
+}
+
 export function launcherProject(p: Project) {
   const info = typeInfo(p.type);
   return {
@@ -81,8 +88,10 @@ export function launcherProject(p: Project) {
       /** Folder inside the instance (.minecraft) to put the file in; null for modpacks. */
       directory: info.installDir,
       /** Modpacks are imported as a new instance instead of copied into a folder. */
-      method: p.type === "modpack" ? "import_instance" : p.type === "plugin" ? "server_plugins" : "copy_to_directory",
+      method: installMethod(p.type),
     },
+    /** "java" or "bedrock" */
+    edition: info.edition ?? "java",
     download_mode: p.download_mode ?? "latest",
   };
 }

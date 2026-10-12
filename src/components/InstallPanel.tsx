@@ -145,6 +145,31 @@ function buildLaunchers(p: Props, dir: string | null): Launcher[] {
     return [{ id: "use", name: "How to use", steps: genericSteps(p) }];
   }
 
+  if (typeInfo(p.type).edition === "bedrock") {
+    const f = <b>{p.filename}</b>;
+    const what = p.type === "bedrock_world" ? "world" : p.type === "bedrock_template" ? "world template" : "pack";
+    return [
+      { id: "jace", name: "Jace Launcher", steps: [
+        <>Open <b>Bedrock</b> in Jace Launcher (Linux and macOS, through the Minecraft Bedrock Launcher).</>,
+        <>Find it on the <b>Jace Store</b> tab and click <b>Install</b>, or click <b>Import file</b> and pick {f}.</>,
+        p.type === "bedrock_addon" || p.type === "bedrock_texture"
+          ? <>In Minecraft, turn it on in the world&apos;s <b>Behavior Packs</b> / <b>Resource Packs</b> settings.</>
+          : <>Start Minecraft. The {what} is in your list.</>,
+      ]},
+      { id: "windows", name: "Windows", steps: [
+        <>Download {f}.</>,
+        <>Double-click it. Minecraft opens and imports the {what}.</>,
+      ]},
+      { id: "mobile", name: "Phone / tablet", steps: [
+        <>Download {f} on the device.</>,
+        <>Open it and choose <b>Minecraft</b>. It imports automatically.</>,
+      ]},
+      { id: "console", name: "Console", steps: [
+        <>Consoles can&apos;t import files. Use the Marketplace, or a Realm you set up from another device.</>,
+      ]},
+    ];
+  }
+
   if (p.type === "modpack") {
     const mr = p.filename.endsWith(".mrpack");
     return [

@@ -1,6 +1,6 @@
 import { json, notFound, preflight } from "@/lib/api";
 import { siteUrl, typeInfo } from "@/lib/constants";
-import { findMcProject, launcherFile, launcherVersion, mcVersions } from "@/lib/launcherApi";
+import { findMcProject, installMethod, launcherFile, launcherVersion, mcVersions } from "@/lib/launcherApi";
 
 export const OPTIONS = preflight;
 
@@ -33,7 +33,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
     version: launcherVersion(version),
     file: file ? launcherFile(file) : null,
     install: {
-      method: project.type === "modpack" ? "import_instance" : project.type === "plugin" ? "server_plugins" : "copy_to_directory",
+      method: installMethod(project.type),
       directory: dir,
       path: dir && file ? `${dir}/${file.filename}` : null,
       /** Modpacks: feed this to your instance importer. */

@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { GAME_VERSIONS, formatBytes, typeInfo } from "@/lib/constants";
+import { formatBytes, typeInfo, versionsFor } from "@/lib/constants";
 import { detectMeta, hashFile, safeFilename, uploadToBucket } from "@/lib/upload";
 import type { Project } from "@/lib/types";
 import type { Dependency } from "@/lib/dependencyTypes";
@@ -200,7 +200,7 @@ export default function VersionUploader({ project, userId }: { project: Project;
         <div>
           <span className="label">Minecraft versions</span>
           <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
-            {GAME_VERSIONS.map((v) => (
+            {versionsFor(project.type).map((v) => (
               <button type="button" key={v} onClick={() => toggle(gameVersions, setGameVersions, v)}
                 className={`chip cursor-pointer ${gameVersions.includes(v) ? "chip-on" : "hover:text-text"}`}>{v}</button>
             ))}
