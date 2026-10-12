@@ -36,7 +36,7 @@ export async function GET() {
   const Hit = {
     type: "object",
     properties: {
-      id: str, slug: str, type: { type: "string", enum: MC_TYPE_IDS }, title: str, summary: str, icon_url: { type: ["string", "null"] },
+      id: str, slug: str, type: { type: "string", enum: MC_TYPE_IDS }, edition: { type: "string", enum: ["java", "bedrock"] }, title: str, summary: str, icon_url: { type: ["string", "null"] },
       author: { type: ["string", "null"] }, downloads: { type: "integer" }, categories: strs, loaders: strs, game_versions: strs,
       created_at: str, updated_at: str, page_url: str,
     },
@@ -56,14 +56,15 @@ export async function GET() {
           summary: "Search Minecraft content",
           parameters: [
             q("q", "Search text"), q("type", `Comma list of: ${MC_TYPE_IDS.join(", ")}`), q("loader", "Comma list, any match"),
-            q("game_version", "Minecraft version"), q("category", "Comma list, any match"),
+            q("game_version", "Minecraft version (Java or Bedrock numbering, matching the type)"), q("category", "Comma list, any match"),
+            q("edition", "Which Minecraft when no type is given. Default java", { type: "string", enum: ["java", "bedrock", "all"] }),
             q("sort", "Sort order", { type: "string", enum: ["downloads", "updated", "newest", "title"] }),
             q("page", "1-based page", { type: "integer" }), q("limit", "1-50, default 20", { type: "integer" }),
           ],
           responses: ok("Search results", "SearchResult"),
         },
       },
-      "/featured": { get: { summary: "Popular, recently updated and newest projects", parameters: [q("type", "One type"), q("limit", "1-30", { type: "integer" })], responses: { 200: { description: "Rows" } } } },
+      "/featured": { get: { summary: "Popular, recently updated and newest projects", parameters: [q("type", "Comma list of types"), q("edition", "java (default), bedrock or all", { type: "string", enum: ["java", "bedrock", "all"] }), q("limit", "1-30", { type: "integer" })], responses: { 200: { description: "Rows" } } } },
       "/project/{slug}": { get: { summary: "Project details with the featured version", parameters: [slug], responses: { 200: { description: "Project" }, 404: { description: "Not found or not Minecraft content" } } } },
       "/project/{slug}/versions": { get: { summary: "Versions, filterable for an instance", parameters: [slug, ...instance], responses: { 200: { description: "Versions", content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/Version" } } } } } } } },
       "/project/{slug}/resolve": { get: { summary: "Best version + file + install path for an instance", parameters: [slug, ...instance], responses: { 200: { description: "Resolved install" }, 404: { description: "No compatible version" } } } },

@@ -1,6 +1,6 @@
 import { json, notFound, preflight } from "@/lib/api";
 import { siteUrl, typeInfo } from "@/lib/constants";
-import { findMcProject, installMethod, launcherFile, launcherVersion, mcVersions } from "@/lib/launcherApi";
+import { editionOf, findMcProject, installMethod, launcherFile, launcherVersion, mcVersions } from "@/lib/launcherApi";
 
 export const OPTIONS = preflight;
 
@@ -29,7 +29,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   const file = files.find((f) => f.sha1) ?? files[0];
   const dir = typeInfo(project.type).installDir;
   return json({
-    project: { id: project.id, slug: project.slug, title: project.title, type: project.type },
+    project: { id: project.id, slug: project.slug, title: project.title, type: project.type, edition: editionOf(project.type) },
     version: launcherVersion(version),
     file: file ? launcherFile(file) : null,
     install: {

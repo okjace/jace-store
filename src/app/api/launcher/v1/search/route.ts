@@ -1,6 +1,6 @@
 import { badRequest, json, preflight } from "@/lib/api";
 import { createPublicClient } from "@/lib/supabase/server";
-import { isMcType, launcherHit, MC_TYPE_IDS, PROJECT_SELECT } from "@/lib/launcherApi";
+import { editionOf, isMcType, launcherHit, MC_TYPE_IDS, PROJECT_SELECT, typesForEdition } from "@/lib/launcherApi";
 import type { Project } from "@/lib/types";
 
 export const OPTIONS = preflight;
@@ -9,7 +9,9 @@ export const OPTIONS = preflight;
  * GET /api/launcher/v1/search
  *   ?q=sodium &type=mod &loader=fabric &game_version=1.21.1 &category=optimization
  *   &sort=downloads|updated|newest|title &page=1 &limit=20
- * type, loader and category accept comma-separated lists (any match).
+ *   &edition=java|bedrock|all
+ * type, loader and category accept comma-separated lists (any match). Without a type,
+ * only Java Edition content is returned unless edition=bedrock or edition=all.
  */
 export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams;
@@ -17,13 +19,20 @@ export async function GET(req: Request) {
   const types = list("type");
   const bad = types.find((t) => !isMcType(t));
   if (bad) return badRequest(`Unknown type "${bad}". Use one of: ${MC_TYPE_IDS.join(", ")}`);
+  const edition = sp.get("edition");
+  const editionTypes = typesForEdition(edition);
+  if (!editionTypes) return badRequest(`edition must be java, bedrock or all`);
+  // An explicit edition narrows explicit types too (e.g. type=world&edition=bedrock -> nothing).
+  const searchTypes = types.length
+    ? types.filter((t) => !edition || edition === "all" || editionOf(t) === edition)
+    : editionTypes;
   const limit = Math.min(50, Math.max(1, Number(sp.get("limit")) || 20));
   const page = Math.max(1, Number(sp.get("page")) || 1);
   const sort = sp.get("sort") ?? "downloads";
   const q = (sp.get("q") ?? "").replace(/[%,()]/g, " ").trim().slice(0, 100);
 
   let query = createPublicClient().from("projects").select(PROJECT_SELECT, { count: "exact" })
-    .in("type", types.length ? types : MC_TYPE_IDS);
+    .in("type", searchTypes.length ? searchTypes : ["__none__"]);
   if (q) query = query.or(`title.ilike.%${q}%,summary.ilike.%${q}%,slug.ilike.%${q}%`);
   const loaders = list("loader");
   if (loaders.length) query = query.overlaps("loaders", loaders);

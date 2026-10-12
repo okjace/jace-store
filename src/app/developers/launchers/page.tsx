@@ -8,8 +8,8 @@ export default function LauncherApiDocs() {
   const Code = ({ children }: { children: string }) => <pre className="card overflow-x-auto p-4 text-xs leading-relaxed">{children}</pre>;
   const endpoints: [string, string, string][] = [
     ["GET", "/meta", "Types, loaders, categories, game versions and install folders, for building filter UI"],
-    ["GET", "/search?q=&type=mod&loader=fabric&game_version=1.21.1&category=&sort=downloads&page=1&limit=20", "Browse/search. type, loader and category take comma lists"],
-    ["GET", "/featured?type=mod&limit=10", "Popular, recently updated and newest rows for a home screen"],
+    ["GET", "/search?q=&type=mod&loader=fabric&game_version=1.21.1&category=&sort=downloads&page=1&limit=20", "Browse/search. type, loader and category take comma lists. edition=bedrock|all for Bedrock content"],
+    ["GET", "/featured?type=mod&edition=java&limit=10", "Popular, recently updated and newest rows for a home screen"],
     ["GET", "/project/{slug}", "Details: Markdown description, gallery, links, install info, featured version"],
     ["GET", "/project/{slug}/versions?loader=&game_version=&channel=release", "Version list filtered for an instance"],
     ["GET", "/project/{slug}/resolve?loader=fabric&game_version=1.21.1", "The one file to install for an instance, plus where it goes"],
@@ -105,6 +105,13 @@ for h, info in r["results"].items():
           <li>Files can be hosted elsewhere (<code>external: true</code>). Minecraft files always have SHA-1 and SHA-512 so you can verify them.</li>
           <li><code>resolve</code> defaults to <code>channel=release</code> and respects a version the creator pinned as primary, if it fits the instance.</li>
           <li>Responses are cached at the edge for 30-120 seconds; <code>/updates</code> is never cached.</li>
+          <li>
+            <b className="text-text">Bedrock Edition</b> content (add-ons, texture packs, worlds, skin packs, world templates) has
+            <code className="mx-1">edition: &quot;bedrock&quot;</code> and <code>install.method = &quot;bedrock_import&quot;</code>: open or import the
+            <code className="mx-1">.mcpack</code>/<code>.mcaddon</code>/<code>.mcworld</code>/<code>.mctemplate</code> file with the game instead of copying it to a folder.
+            Without a <code>type</code>, search and featured return Java content only; pass <code>edition=bedrock</code> or <code>edition=all</code>.
+            Bedrock uses its own version numbers (<code>bedrock_game_versions</code> in <code>/meta</code>).
+          </li>
           <li>Need Modrinth-compatible endpoints instead? See <Link href="/launchers#api" className="text-brand underline">/api/v2</Link>.</li>
         </ul>
       </section>

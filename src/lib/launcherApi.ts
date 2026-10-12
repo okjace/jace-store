@@ -11,6 +11,20 @@ export const MC_TYPES = PROJECT_TYPES.filter((t) => t.minecraft);
 export const MC_TYPE_IDS = MC_TYPES.map((t) => t.id);
 export const isMcType = (t: string) => MC_TYPE_IDS.includes(t as (typeof MC_TYPE_IDS)[number]);
 
+export type Edition = "java" | "bedrock";
+export const editionOf = (t: string): Edition => (typeInfo(t).edition === "bedrock" ? "bedrock" : "java");
+
+/**
+ * Types to search when the caller didn't name any. Defaults to Java so launchers
+ * written before Bedrock content existed never get files they can't install.
+ */
+export function typesForEdition(edition: string | null): string[] | null {
+  if (!edition || edition === "java") return MC_TYPE_IDS.filter((t) => editionOf(t) === "java");
+  if (edition === "bedrock") return MC_TYPE_IDS.filter((t) => editionOf(t) === "bedrock");
+  if (edition === "all") return [...MC_TYPE_IDS];
+  return null;
+}
+
 const OWNER = "owner:profiles(username, display_name, avatar_url)";
 
 export function launcherFile(f: FileRow) {
@@ -55,6 +69,8 @@ export function launcherHit(p: Project) {
     type: p.type,
     title: p.title,
     summary: p.summary,
+    /** "java" or "bedrock" */
+    edition: editionOf(p.type),
     icon_url: p.icon_url,
     author: p.owner?.username ?? null,
     downloads: p.downloads,
@@ -90,8 +106,6 @@ export function launcherProject(p: Project) {
       /** Modpacks are imported as a new instance instead of copied into a folder. */
       method: installMethod(p.type),
     },
-    /** "java" or "bedrock" */
-    edition: info.edition ?? "java",
     download_mode: p.download_mode ?? "latest",
   };
 }
