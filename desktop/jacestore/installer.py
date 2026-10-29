@@ -225,8 +225,10 @@ def make_shortcut(lnk: Path, target: Path, description=""):
           f"$s.TargetPath='{q(target)}';$s.WorkingDirectory='{q(target.parent)}';"
           f"$s.IconLocation='{q(target)},0';$s.Description='{q(description)}';$s.Save()")
     lnk.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", ps],
-                   check=True, creationflags=NO_WINDOW, capture_output=True)
+    r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", ps],
+                       creationflags=NO_WINDOW, capture_output=True, text=True, errors="replace")
+    if r.returncode != 0 or not lnk.exists():
+        raise InstallError(f"Couldn't create the shortcut {lnk.name}: {(r.stderr or r.stdout).strip()[-500:]}")
 
 
 def _powershell(cmd: str, log=print) -> str:

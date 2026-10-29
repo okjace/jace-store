@@ -58,7 +58,8 @@ check("installed remove", installed.get("test", "a") is None)
 
 # --- installing an app from an archive ------------------------------------------------------------------
 def exe_bytes():
-    return b"#!/bin/sh\necho hello\n" if sys.platform != "win32" else b"MZ" + b"\0" * 64
+    # Windows: a real program (a copy of python.exe), so shortcuts point at a valid executable
+    return b"#!/bin/sh\necho hello\n" if sys.platform != "win32" else Path(sys.executable).read_bytes()
 
 
 if sys.platform == "darwin":
