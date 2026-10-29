@@ -2,8 +2,10 @@
 import { useEffect, useState } from "react";
 import { REPORT_REASONS } from "@/lib/moderation-reasons";
 
-export default function ReportButton({ projectId, projectTitle, signedIn, loginHref }: {
+export default function ReportButton({ projectId, projectTitle, signedIn, loginHref, commentId, label = "⚑ Report" }: {
   projectId: string; projectTitle: string; signedIn: boolean; loginHref: string;
+  /** Report a comment on the project instead of the project itself. */
+  commentId?: string; label?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -26,7 +28,7 @@ export default function ReportButton({ projectId, projectTitle, signedIn, loginH
     const res = await fetch("/api/reports", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ project_id: projectId, reason, details }),
+      body: JSON.stringify({ project_id: projectId, reason, details, ...(commentId ? { comment_id: commentId } : {}) }),
     });
     const out = await res.json().catch(() => ({}));
     setBusy(false);
@@ -35,25 +37,25 @@ export default function ReportButton({ projectId, projectTitle, signedIn, loginH
   }
 
   if (!signedIn) {
-    return <a href={loginHref} className="text-xs text-muted hover:text-red-300 hover:underline">⚑ Report</a>;
+    return <a href={loginHref} className="text-xs text-muted hover:text-red-300 hover:underline">{label}</a>;
   }
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="text-xs text-muted hover:text-red-300 hover:underline">⚑ Report</button>
+      <button type="button" onClick={() => setOpen(true)} className="text-xs text-muted hover:text-red-300 hover:underline">{label}</button>
       {open && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" onClick={() => setOpen(false)} role="dialog" aria-modal="true" aria-label="Report project">
           <div className="card w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
             {sent ? (
               <div className="space-y-3 text-center">
                 <h2 className="text-lg font-bold">Thanks for the report</h2>
-                <p className="text-sm text-muted">A moderator will review <b>{projectTitle}</b>.</p>
+                <p className="text-sm text-muted">A moderator will review {commentId ? "this comment" : <b>{projectTitle}</b>}.</p>
                 <button onClick={() => setOpen(false)} className="btn-primary">Close</button>
               </div>
             ) : (
               <form onSubmit={submit} className="space-y-4">
                 <div className="flex items-start justify-between">
-                  <h2 className="text-lg font-bold">Report {projectTitle}</h2>
+                  <h2 className="text-lg font-bold">{commentId ? "Report comment" : `Report ${projectTitle}`}</h2>
                   <button type="button" onClick={() => setOpen(false)} className="text-muted hover:text-text" aria-label="Close">✕</button>
                 </div>
                 <fieldset className="space-y-2">

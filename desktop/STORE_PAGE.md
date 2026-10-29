@@ -14,6 +14,7 @@ computer already trusts, all in one window.
   **Flathub**, **Snap**, your **distro's packages** (apt, dnf, zypper, pacman) and the **AUR** (Linux).
 - **Updates in one place:** see which apps have updates and update them with one click. Jace Store updates itself too.
 - **Open from the website:** the "Open in Jace Store app" button on any app's page opens it here.
+- **Works with Flathub's website:** on Linux, clicking **Install** on flathub.org opens the app in Jace Store.
 
 ## Installing
 - **Windows:** run the `.exe`. It installs itself (Start menu, desktop shortcut, Installed apps).

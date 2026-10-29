@@ -1,3 +1,4 @@
+import { guardPost } from "@/lib/accountModeration";
 import { ApiError, handler, ownedVersion, readJson, requireApiUser } from "@/lib/apiAuth";
 import { fileOut } from "@/lib/cliSerialize";
 import { installFields } from "@/lib/fileFormats";
@@ -25,6 +26,7 @@ export const PATCH = handler(async (req, { params }: { params: Promise<{ id: str
   if (!file) throw new ApiError(404, "File not found");
   await ownedVersion(userId, file.version_id);
   const b = await readJson<Record<string, unknown>>(req);
+  await guardPost(userId, "file", { names: [b.label as string, b.filename as string] });
   const patch: Record<string, unknown> = {};
   if ("label" in b) patch.label = b.label ? String(b.label).trim().slice(0, 80) : null;
   if (typeof b.filename === "string" && b.filename.trim()) patch.filename = b.filename.trim().slice(0, 200);

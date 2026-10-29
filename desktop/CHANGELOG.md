@@ -1,5 +1,11 @@
 # Jace Store desktop: changelog
 
+## 1.1.0
+- Opens Flathub's "Install" links: clicking Install on flathub.org (a .flatpakref download) or
+  "Open in software manager" (appstream://) shows the app in Jace Store, ready to install.
+  It can be turned off in Settings → Flathub links. Also opens .flatpak bundle files.
+- "Open" now works for apps installed from Flathub and Snap.
+
 ## 1.0.0
 - First release of the Jace Store desktop app for Windows, macOS and Linux.
 - Browse and install apps and games from Jace Store. It picks the right download for your computer

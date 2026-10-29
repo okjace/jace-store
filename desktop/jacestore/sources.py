@@ -110,6 +110,48 @@ class Flathub(Source):
     def uninstall(self, pkg_id, log=print):
         run(["flatpak", "uninstall", "-y", "--noninteractive", pkg_id], log)
 
+    def app_info(self, app_id: str) -> dict:
+        """Flathub's page data for one app (name, summary, icon, description HTML, screenshots...)."""
+        return get_json(f"https://flathub.org/api/v2/appstream/{app_id}")
+
+    def package(self, app_id: str) -> Package:
+        try:
+            d = self.app_info(app_id)
+        except Exception:  # noqa: BLE001 - install by id even if Flathub's API is down
+            d = {}
+        return Package("flathub", app_id, d.get("name") or app_id, d.get("summary") or "", "",
+                       d.get("icon"), f"https://flathub.org/apps/{app_id}", {"info": d})
+
+
+class FlatpakFile(Source):
+    """A .flatpakref from a remote other than Flathub, or a .flatpak bundle (opened from a website)."""
+    id, name = "flatpak", "Flatpak"
+    blurb = "Flatpak apps opened from a .flatpakref or .flatpak file"
+
+    def available(self):
+        return detect().os == "linux" and bool(which("flatpak"))
+
+    def search(self, q, limit=30):
+        return []
+
+    def install(self, pkg, log=print):
+        before = _flatpak_apps()
+        kind = "--bundle" if pkg.extra.get("bundle") else "--from"
+        run(["flatpak", "install", "--user", "-y", "--noninteractive", kind, pkg.extra["path"]], log)
+        new = sorted(_flatpak_apps() - before)
+        app_id = new[0] if new else pkg.id
+        pkg = Package(pkg.source, app_id, pkg.name, pkg.summary, pkg.version, pkg.icon_url, pkg.homepage, pkg.extra)
+        self.record(pkg, {"launch_kind": "flatpak", "launch": app_id})
+        return {"id": app_id}
+
+    def uninstall(self, pkg_id, log=print):
+        run(["flatpak", "uninstall", "-y", "--noninteractive", pkg_id], log)
+
+
+def _flatpak_apps() -> set:
+    out = _out(["flatpak", "list", "--app", "--columns=application"])
+    return {line.strip() for line in out.splitlines() if line.strip()}
+
 
 # --- Snap ----------------------------------------------------------------------------------
 
@@ -325,6 +367,7 @@ class Homebrew(Source):
 
 
 ALL = [Winget(), Homebrew(), Distro(), Flathub(), Snap(), AUR()]
+FLATPAK_FILE = FlatpakFile()
 
 
 def for_this_computer() -> list[Source]:
@@ -341,4 +384,4 @@ def for_this_computer() -> list[Source]:
 
 
 def by_id(sid: str) -> Source | None:
-    return next((s for s in ALL if s.id == sid), None)
+    return next((s for s in [*ALL, FLATPAK_FILE] if s.id == sid), None)

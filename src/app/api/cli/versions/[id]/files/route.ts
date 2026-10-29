@@ -1,3 +1,4 @@
+import { guardPost } from "@/lib/accountModeration";
 import { ApiError, handler, ownedVersion, readJson, requireApiUser } from "@/lib/apiAuth";
 import { addLinkFile, type LinkInput } from "@/lib/linkFiles";
 import { fileOut } from "@/lib/cliSerialize";
@@ -16,6 +17,7 @@ export const POST = handler(async (req, { params }: { params: Promise<{ id: stri
   const userId = await requireApiUser(req);
   const v = await ownedVersion(userId, (await params).id);
   const b = await readJson<Record<string, unknown>>(req);
+  await guardPost(userId, "file", { names: [b.label as string, b.filename as string] });
 
   if (b.kind === "link" || (!b.kind && b.url)) return fileOut(await addLinkFile(v, b as unknown as LinkInput));
 

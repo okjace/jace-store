@@ -140,6 +140,23 @@ if sys.platform.startswith("linux"):
     except installer.InstallError as e:
         check("wrong package type refused", "doesn't use" in str(e) or "read-only" in str(e), str(e))
 
+# --- links from flathub.org -----------------------------------------------------------------------------
+from jacestore.flatpak_links import is_flatpak_arg, target_from_arg  # noqa: E402
+t = target_from_arg("appstream://org.blender.Blender")
+check("appstream:// link -> Flathub app", t and t.kind == "flathub" and t.app_id == "org.blender.Blender", t)
+check("appstream: with .desktop", target_from_arg("appstream:org.gimp.GIMP.desktop").app_id == "org.gimp.GIMP")
+ref = TMP / "org.blender.Blender.flatpakref"
+ref.write_text("[Flatpak Ref]\nName=org.blender.Blender\nBranch=stable\nTitle=org.blender.Blender from flathub\n"
+               "IsRuntime=false\nUrl=https://dl.flathub.org/repo/\nSuggestRemoteName=flathub\nGPGKey=abc\n")
+t = target_from_arg(str(ref))
+check(".flatpakref from flathub.org -> Flathub app", t and t.kind == "flathub" and t.app_id == "org.blender.Blender", t)
+check("file:// URL to a .flatpakref", target_from_arg(ref.as_uri()).app_id == "org.blender.Blender")
+other = TMP / "thing.flatpakref"
+other.write_text("[Flatpak Ref]\nName=com.example.Thing\nTitle=Thing\nUrl=https://example.com/repo/\n")
+t = target_from_arg(str(other))
+check("other remote's .flatpakref -> ref", t and t.kind == "ref" and t.app_id == "com.example.Thing", t)
+check("is_flatpak_arg", is_flatpak_arg("appstream://x") and is_flatpak_arg("/tmp/a.flatpakref") and not is_flatpak_arg("jacestore://project/x"))
+
 # --- main-program guessing ---------------------------------------------------------------------------------
 g = TMP / "guess"
 for name, size in (("bin/helper", 10), ("MyGame", 5_000_000), ("bin/crashreporter", 9_000_000)):

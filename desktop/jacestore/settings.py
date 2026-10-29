@@ -3,7 +3,7 @@ import json
 
 from jacestore.paths import data_dir
 
-DEFAULTS = {"channel": "release", "check_self_updates": True, "all_platforms": False}
+DEFAULTS = {"channel": "release", "check_self_updates": True, "all_platforms": False, "flathub_links": True}
 
 
 def load() -> dict:

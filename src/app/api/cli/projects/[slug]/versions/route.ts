@@ -1,3 +1,4 @@
+import { guardPost } from "@/lib/accountModeration";
 import { ApiError, handler, ownedProject, readJson, requireApiUser } from "@/lib/apiAuth";
 import { addLinkFile, type LinkInput } from "@/lib/linkFiles";
 import { parseDependencies } from "@/lib/dependencies";
@@ -28,6 +29,7 @@ export const POST = handler(async (req, { params }: { params: Promise<{ slug: st
   }
 
   const dependencies = b.dependencies == null ? [] : parseDependencies(b.dependencies);
+  await guardPost(userId, "version", { names: [versionNumber, String(b.name ?? "")], texts: [String(b.changelog ?? "")] });
 
   const admin = createAdminClient();
   const { data: version, error } = await admin

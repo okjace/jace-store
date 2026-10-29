@@ -28,6 +28,7 @@ export default function ProjectCard({ project }: { project: Project }) {
       </div>
       <div className="hidden shrink-0 text-right text-sm text-muted sm:block">
         <div><b className="text-text">{formatNumber(project.downloads)}</b> downloads</div>
+        {!!project.likes && <div className="mt-1"><span className="text-pink-300">♥</span> {formatNumber(project.likes)}</div>}
         <div className="mt-1">{timeAgo(project.updated_at)}</div>
       </div>
     </Link>

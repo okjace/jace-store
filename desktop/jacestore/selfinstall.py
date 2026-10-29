@@ -24,12 +24,15 @@ EMBEDDED_DIR = "jace_setup"
 MAC_APP = f"{APP_NAME}.app"
 LINUX_FILE = "JaceStore.AppImage"
 NO_WINDOW = 0x08000000
+# what flathub.org's Install button gives you, and its "open in software manager" link
+FLATPAK_MIMES = ("application/vnd.flatpak.ref", "application/vnd.flatpak", "x-scheme-handler/appstream")
 
 OPTIONS = {
     "win32": [("startmenu", "Add to the Start menu", True), ("desktop", "Create a desktop shortcut", True),
               ("apps", "Show in Windows \"Installed apps\"", True)],
     "darwin": [("dock", "Keep in the Dock", True), ("unquarantine", "Remove the \"downloaded from the internet\" flag", True)],
-    "linux": [("menu", "Add to the app menu", True), ("desktop", "Create a desktop shortcut", False)],
+    "linux": [("menu", "Add to the app menu", True), ("desktop", "Create a desktop shortcut", False),
+              ("flathub", "Open Flathub \"Install\" links (.flatpakref) with Jace Store", True)],
 }
 
 
@@ -221,7 +224,8 @@ def _desktop_entry(exe: Path) -> str:
         "[Desktop Entry]", "Type=Application", f"Name={APP_NAME}", "GenericName=App Store",
         "Comment=Install apps and games from Jace Store, Flathub and your distro",
         f'Exec="{exe}" %U', f"Icon={APP_ID}", "Terminal=false", "Categories=System;PackageManager;",
-        "Keywords=store;apps;install;software;flatpak;packages;", f"MimeType=x-scheme-handler/{URL_SCHEME};",
+        "Keywords=store;apps;install;software;flatpak;packages;",
+        f"MimeType=x-scheme-handler/{URL_SCHEME};{';'.join(FLATPAK_MIMES)};",
         f"StartupWMClass={APP_NAME}", "",
     ])
 
@@ -253,6 +257,7 @@ def _install_linux(target: Path, opts, status) -> Path:
             subprocess.run(["xdg-mime", "default", entry.name, f"x-scheme-handler/{URL_SCHEME}"], env=child_env(), capture_output=True)
         if which("update-desktop-database"):
             subprocess.run(["update-desktop-database", str(entry.parent)], env=child_env(), capture_output=True)
+    set_flatpak_handler(bool(opts.get("flathub")))
     if opts.get("desktop"):
         link = linux_desktop_link()
         if link.parent.is_dir():
@@ -260,6 +265,49 @@ def _install_linux(target: Path, opts, status) -> Path:
             link.chmod(0o755)
     status("Done")
     return dst
+
+
+def set_flatpak_handler(on: bool):
+    """Make Jace Store (or not) what opens .flatpakref files and appstream:// links (Linux)."""
+    from jacestore import settings
+    settings.save(flathub_links=on)
+    entry = linux_menu_entry()
+    if not sys.platform.startswith("linux") or not which("xdg-mime"):
+        return
+    if on and entry.exists():
+        subprocess.run(["xdg-mime", "default", entry.name, *FLATPAK_MIMES], env=child_env(), capture_output=True)
+    elif not on:
+        # hand them back to the software center, if one is installed
+        for app in ("org.gnome.Software.desktop", "org.kde.discover.desktop", "io.github.kolunmi.Bazaar.desktop"):
+            for d in (Path("/usr/share/applications"), Path("/var/lib/flatpak/exports/share/applications")):
+                if (d / app).exists():
+                    subprocess.run(["xdg-mime", "default", app, *FLATPAK_MIMES], env=child_env(), capture_output=True)
+                    return
+
+
+def flatpak_handler_is_us() -> bool:
+    if not which("xdg-mime"):
+        return False
+    out = subprocess.run(["xdg-mime", "query", "default", "application/vnd.flatpak.ref"], env=child_env(),
+                         capture_output=True, text=True).stdout.strip()
+    return out == linux_menu_entry().name
+
+
+def refresh_integration():
+    """Installed copy on Linux: rewrite the menu entry (newer versions handle more links) and keep
+    the Flathub link setting. Runs at startup, so an update brings the new entry along."""
+    from jacestore import settings
+    if not (sys.platform.startswith("linux") and running_installed()):
+        return
+    entry = linux_menu_entry()
+    if entry.exists():
+        new = _desktop_entry(default_dir() / LINUX_FILE)
+        if entry.read_text(encoding="utf-8") != new:
+            entry.write_text(new, encoding="utf-8")
+            if which("update-desktop-database"):
+                subprocess.run(["update-desktop-database", str(entry.parent)], env=child_env(), capture_output=True)
+        if settings.load().get("flathub_links", True) and not flatpak_handler_is_us():
+            set_flatpak_handler(True)
 
 
 # --- start the installed copy / clean up the download -------------------------------------------

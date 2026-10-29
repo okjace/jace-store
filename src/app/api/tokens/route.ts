@@ -1,3 +1,4 @@
+import { requireCanPost } from "@/lib/accountModeration";
 import { ApiError, handler, newToken, readJson } from "@/lib/apiAuth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -11,6 +12,7 @@ export const POST = handler(async (req) => {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new ApiError(401, "Sign in first");
+  await requireCanPost(user.id);
   const { name } = await readJson<{ name?: string }>(req);
   const label = String(name ?? "").trim().slice(0, 64) || "CLI";
   const admin = createAdminClient();

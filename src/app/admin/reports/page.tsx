@@ -1,3 +1,4 @@
+import { automodState } from "@/lib/jace";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/requireUser";
@@ -8,7 +9,13 @@ import ReportActions from "@/components/ReportActions";
 
 export const metadata = { title: "Reports" };
 
+// with comment reports (migration 011); before that, the same without them
+const SELECT_011 = "id, reason, details, status, created_at, resolved_at, resolution_note, comment_id, comment:comments(id, body, author:profiles(id, username)), reporter:profiles!reports_reporter_id_fkey(username), project:projects(id, slug, title, type, downloads, owner:profiles(username))";
+const SELECT_OLD = "id, reason, details, status, created_at, resolved_at, resolution_note, reporter:profiles!reports_reporter_id_fkey(username), project:projects(id, slug, title, type, downloads, owner:profiles(username))";
+
 interface Row {
+  comment_id?: string | null;
+  comment?: { id: string; body: string; author: { id: string; username: string } | null } | null;
   id: string; reason: string; details: string; status: string; created_at: string; resolved_at: string | null; resolution_note: string | null;
   reporter: { username: string } | null;
   project: { id: string; slug: string; title: string; type: string; downloads: number; owner: { username: string } | null } | null;
@@ -19,26 +26,26 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   if (!(await isAdmin(user.id))) notFound();
   const showClosed = (await searchParams).show === "closed";
 
-  const { data } = await createAdminClient()
-    .from("reports")
-    .select("id, reason, details, status, created_at, resolved_at, resolution_note, reporter:profiles!reports_reporter_id_fkey(username), project:projects(id, slug, title, type, downloads, owner:profiles(username))")
-    .eq("status", "open")
-    .order("created_at", { ascending: false })
-    .limit(200);
-  const { data: closed } = showClosed
-    ? await createAdminClient()
-        .from("reports")
-        .select("id, reason, details, status, created_at, resolved_at, resolution_note, reporter:profiles!reports_reporter_id_fkey(username), project:projects(id, slug, title, type, downloads, owner:profiles(username))")
-        .neq("status", "open")
-        .order("resolved_at", { ascending: false })
-        .limit(100)
-    : { data: null };
+  const query = async (open: boolean) => {
+    for (const select of [SELECT_011, SELECT_OLD]) {
+      let q = createAdminClient().from("reports").select(select);
+      q = open ? q.eq("status", "open").order("created_at", { ascending: false }).limit(200)
+        : q.neq("status", "open").order("resolved_at", { ascending: false }).limit(100);
+      const { data, error } = await q;
+      if (!error) return data;
+    }
+    return null;
+  };
+  const data = await query(true);
+  const closed = showClosed ? await query(false) : null;
+  const jace = await automodState();
 
-  // Group open reports by project so each project is reviewed once.
+  // Group open reports by project (or by comment) so each thing is reviewed once.
   const groups = new Map<string, Row[]>();
   for (const r of (data ?? []) as unknown as Row[]) {
     if (!r.project) continue;
-    groups.set(r.project.id, [...(groups.get(r.project.id) ?? []), r]);
+    const key = r.comment_id ? `c:${r.comment_id}` : r.project.id;
+    groups.set(key, [...(groups.get(key) ?? []), r]);
   }
 
   return (
@@ -47,7 +54,12 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         <div>
           <Link href="/dashboard" className="text-sm text-muted hover:text-text">← Dashboard</Link>
           <h1 className="mt-2 text-3xl font-black">Reports</h1>
-          <p className="text-muted">{groups.size} project{groups.size === 1 ? "" : "s"} waiting for review</p>
+          <p className="text-muted">{groups.size} thing{groups.size === 1 ? "" : "s"} waiting for review</p>
+          <p className="mt-1 text-xs text-muted">
+            Jace auto moderation: {jace.source === "jace"
+              ? (jace.rules.enabled ? `on (${jace.rules.blocked_terms.length} blocked words${jace.rules.auto_mute_after ? `, auto-mute after ${jace.rules.auto_mute_after} blocked posts` : ""})` : "connected, turned off on Jace")
+              : `not connected: ${jace.note}`}
+          </p>
         </div>
         <Link href={showClosed ? "/admin/reports" : "/admin/reports?show=closed"} className="btn-ghost">
           {showClosed ? "Hide closed" : "Show closed"}
@@ -56,8 +68,9 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
 
       {[...groups.values()].map((reports) => {
         const p = reports[0].project!;
+        const c = reports[0].comment;
         return (
-          <div key={p.id} className="card p-5">
+          <div key={c?.id ?? p.id} className="card p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <Link href={`/project/${p.slug}`} className="text-lg font-bold hover:underline" target="_blank">{p.title} ↗</Link>
@@ -66,8 +79,17 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                   <b className="text-red-300">{reports.length} report{reports.length === 1 ? "" : "s"}</b>
                 </div>
               </div>
-              <ReportActions reportId={reports[0].id} projectTitle={p.title} />
+              <ReportActions reportId={reports[0].id} projectTitle={p.title} comment={!!c} />
             </div>
+            {c && (
+              <div className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/5 p-3 text-sm">
+                <div className="text-xs text-muted">
+                  Comment by {c.author ? <Link href={`/user/${c.author.username}`} className="text-text hover:underline">@{c.author.username}</Link> : "deleted user"}
+                  {" "}(moderate them on their profile)
+                </div>
+                <p className="mt-1 whitespace-pre-wrap">{c.body}</p>
+              </div>
+            )}
             <ul className="mt-3 space-y-2">
               {reports.map((r) => (
                 <li key={r.id} className="rounded-lg border border-line bg-panel-2/50 p-3 text-sm">

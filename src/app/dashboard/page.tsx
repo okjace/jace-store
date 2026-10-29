@@ -64,6 +64,7 @@ export default async function Dashboard() {
           </div>
         )}
         <Link href="/settings" className="btn-primary w-full">Account settings</Link>
+        <Link href="/collections" className="btn-ghost w-full">Your collections</Link>
         {moderator && (
           <Link href="/admin/reports" className="btn-ghost w-full">
             Reports {openReports > 0 && <span className="rounded bg-red-500/20 px-1.5 text-xs text-red-300">{openReports}</span>}

@@ -32,6 +32,13 @@ export default function ProjectForm({ project, userId }: { project?: Project; us
 
   const info = typeInfo(type);
 
+  async function api(url: string, method: string, body: unknown) {
+    const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(out.error ?? res.statusText);
+    return out;
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -39,7 +46,18 @@ export default function ProjectForm({ project, userId }: { project?: Project; us
     setSaved(false);
     const supabase = createClient();
     try {
-      const id = project?.id ?? crypto.randomUUID();
+      const fields = {
+        title: title.trim(),
+        summary: summary.trim(),
+        description,
+        categories: categories.filter((c) => info.categories.includes(c)),
+        source_url: sourceUrl.trim() || null,
+        issues_url: issuesUrl.trim() || null,
+        license: license.trim() || null,
+      };
+      // everything goes through the server, which applies Jace's moderation
+      const current: { id: string; slug: string } = project ?? await api("/api/cli/projects", "POST", { ...fields, type, slug });
+      const id = current.id;
       let icon_url = project?.icon_url ?? null;
       if (icon) {
         const ext = icon.name.split(".").pop()?.toLowerCase() || "png";
@@ -50,30 +68,19 @@ export default function ProjectForm({ project, userId }: { project?: Project; us
         const ext = shot.name.split(".").pop()?.toLowerCase() || "png";
         uploaded.push(await uploadToBucket(supabase, "icons", `${userId}/${id}/gallery-${Date.now()}-${i}.${safeFilename(ext)}`, shot));
       }
-      const row = {
-        gallery: [...gallery, ...uploaded].slice(0, MAX_SHOTS),
-        title: title.trim(),
-        slug,
-        summary: summary.trim(),
-        description,
-        categories: categories.filter((c) => info.categories.includes(c)),
-        source_url: sourceUrl.trim() || null,
-        issues_url: issuesUrl.trim() || null,
-        license: license.trim() || null,
-        icon_url,
-      };
+      const nextGallery = [...gallery, ...uploaded].slice(0, MAX_SHOTS);
       if (editing) {
-        const { error } = await supabase.from("projects").update(row).eq("id", id);
-        if (error) throw error;
+        await api(`/api/cli/projects/${project.slug}`, "PATCH", { ...fields, slug, icon_url, gallery: nextGallery });
         setSaved(true);
-        setGallery(row.gallery);
+        setGallery(nextGallery);
         setNewShots([]);
         if (slug !== project.slug) router.replace(`/project/${slug}/edit`);
         router.refresh();
       } else {
-        const { error } = await supabase.from("projects").insert({ ...row, id, type, owner_id: userId });
-        if (error) throw error.code === "23505" ? new Error("That URL slug is taken — pick another.") : error;
-        router.push(`/project/${slug}/edit?new=1#upload`);
+        if (icon_url || nextGallery.length) {
+          await api(`/api/cli/projects/${current.slug}`, "PATCH", { icon_url, gallery: nextGallery });
+        }
+        router.push(`/project/${current.slug}/edit?new=1#upload`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -81,6 +88,7 @@ export default function ProjectForm({ project, userId }: { project?: Project; us
       setBusy(false);
     }
   }
+
 
   return (
     <form onSubmit={submit} className="card space-y-5 p-6">

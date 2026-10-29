@@ -1,3 +1,4 @@
+import { currentState } from "@/lib/accountModeration";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
@@ -77,6 +78,7 @@ export async function GET(request: Request) {
       .from("jace_links")
       .upsert({ jace_id: jace.id, user_id: user.id, jace_username: jace.username }, { onConflict: "user_id" });
     if (error) return fail(error.message.includes("duplicate") ? "Your account already has a Jace account linked." : error.message);
+    await currentState(user.id, true).catch(() => null);      // bring over a Jace ban / mute right away
     return finish(safeNext(saved.next, "/settings") + "?linked=jace#sign-in");
   }
 
@@ -93,6 +95,7 @@ export async function GET(request: Request) {
   const { error } = await supabase.auth.verifyOtp({ type: "email", token_hash: tokenHash });
   if (error) return fail(error.message);
 
+  await currentState(userId, true).catch(() => null);         // bring over a Jace ban / mute right away
   return finish(safeNext(saved.next, "/dashboard"));
 }
 

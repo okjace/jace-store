@@ -59,44 +59,38 @@ export default function VersionUploader({ project, userId }: { project: Project;
     const supabase = createClient();
     const uploadedPaths: string[] = [];
     let versionId: string | null = null;
+    const api = async (url: string, method: string, body?: unknown) => {
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(out.error ?? res.statusText);
+      return out;
+    };
     try {
-      const vid = crypto.randomUUID();
-      const fileRows = [];
+      // the server creates the version (checking bans, mutes and Jace's auto moderation)
+      setStatus("Saving version…");
+      const version = await api(`/api/cli/projects/${project.slug}/versions`, "POST", {
+        version_number: versionNumber.trim(),
+        name: name.trim() || versionNumber.trim(),
+        channel,
+        loaders,
+        game_versions: gameVersions,
+        changelog,
+        ...(cleanDeps(deps).length ? { dependencies: cleanDeps(deps) } : {}),
+      });
+      const vid: string = version.id;
+      versionId = vid;
+      const fileRows = files;
       for (const [i, f] of files.entries()) {
         setStatus(`Hashing ${f.name}…`);
         const { sha1, sha512 } = await hashFile(f);
         setStatus(`Uploading ${f.name} (${formatBytes(f.size)})…`);
         const path = `${userId}/${project.id}/${vid}/${safeFilename(f.name)}`;
-        const url = await uploadToBucket(supabase, "project-files", path, f);
+        await uploadToBucket(supabase, "project-files", path, f);
         uploadedPaths.push(path);
-        fileRows.push({ version_id: vid, filename: f.name, storage_path: path, url, size: f.size, sha1, sha512, is_primary: i === 0, ...(desktop ? { install_mode: installMode } : {}) });
-      }
-      setStatus("Saving version…");
-      const { error: vErr } = await supabase.from("versions").insert({
-        id: vid,
-        project_id: project.id,
-        version_number: versionNumber.trim(),
-        name: name.trim() || versionNumber.trim(),
-        release_channel: channel,
-        loaders,
-        game_versions: gameVersions,
-        changelog,
-      });
-      if (vErr) throw vErr.code === "23505" ? new Error("A version with that number already exists.") : vErr;
-      versionId = vid;
-      if (cleanDeps(deps).length) {
-        setStatus("Saving dependencies…");      // through the API, which checks them
-        const res = await fetch(`/api/cli/versions/${vid}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ dependencies: cleanDeps(deps) }),
+        await api(`/api/cli/versions/${vid}/files`, "POST", {
+          kind: "upload", path, filename: f.name, sha1, sha512, size: f.size, primary: i === 0,
+          ...(desktop ? { install_mode: installMode } : {}),
         });
-        const out = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(`Dependencies: ${out.error ?? res.statusText}`);
-      }
-      if (fileRows.length) {
-        const { error: fErr } = await supabase.from("files").insert(fileRows);
-        if (fErr) throw fErr;
       }
       for (const [i, l] of cleanLinks.entries()) {
         setStatus(info.minecraft ? `Verifying link ${i + 1} (downloading to compute hashes)…` : `Adding link ${i + 1}…`);
@@ -121,7 +115,7 @@ export default function VersionUploader({ project, userId }: { project: Project;
       router.refresh();
     } catch (err) {
       // Roll back partial uploads so we don't leave orphans behind.
-      if (versionId) await supabase.from("versions").delete().eq("id", versionId);
+      if (versionId) await fetch(`/api/cli/versions/${versionId}`, { method: "DELETE" }).catch(() => {});
       if (uploadedPaths.length) await supabase.storage.from("project-files").remove(uploadedPaths);
       setStatus(null);
       setError(err instanceof Error ? err.message : String(err));

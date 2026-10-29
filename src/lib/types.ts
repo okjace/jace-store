@@ -27,6 +27,8 @@ export interface Project {
   license: string | null;
   downloads: number;
   download_mode: "latest" | "primary" | "all";
+  /** migration 011 */
+  likes?: number;
   primary_version_id: string | null;
   created_at: string;
   updated_at: string;

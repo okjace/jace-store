@@ -85,7 +85,7 @@ def launch(record: dict) -> bool:
     target = record.get("launch")
     if not target:
         return False
-    kind = record.get("kind")
+    kind = record.get("launch_kind") or record.get("kind")   # source installs (Flathub, Snap) say how to start them
     env = child_env()
     if kind == "flatpak":
         subprocess.Popen(["flatpak", "run", target], env=env, start_new_session=True)

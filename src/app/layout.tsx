@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
+import AccountNotice from "@/components/AccountNotice";
 import { SITE_NAME, TAGLINE } from "@/lib/constants";
 import "./globals.css";
 
@@ -14,6 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className="min-h-screen antialiased">
         <Navbar />
+        <AccountNotice />
         <main className="mx-auto max-w-7xl px-4 py-8">{children}</main>
         <footer className="mt-16 border-t border-line py-8 text-center text-sm text-muted">
           <div className="flex flex-wrap justify-center gap-4">

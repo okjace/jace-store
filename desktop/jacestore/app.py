@@ -134,7 +134,10 @@ def main():
     from jacestore.app_assets import asset
     from jacestore.ui.style import QSS
 
-    url = next((a for a in argv if a.startswith(f"{URL_SCHEME}:")), None)
+    from jacestore.flatpak_links import is_flatpak_arg
+    url = next((a for a in argv if a.startswith(f"{URL_SCHEME}:") or is_flatpak_arg(a)), None)
+    if url and not url.startswith(f"{URL_SCHEME}:") and "://" not in url:
+        url = os.path.abspath(url)            # a downloaded .flatpakref: the running copy has another working folder
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(APP_VERSION)
@@ -163,6 +166,10 @@ def main():
         if wiz.exec():
             sys.exit(0)        # the installed copy has been started
 
+    try:
+        selfinstall.refresh_integration()      # newer versions register for more links (e.g. Flathub's)
+    except Exception:  # noqa: BLE001 - never stop the app from starting
+        traceback.print_exc()
     from jacestore.ui.main_window import MainWindow
     win = MainWindow()
     server = QLocalServer()
@@ -173,7 +180,7 @@ def main():
         c = server.nextPendingConnection()
         if c.waitForReadyRead(1000):
             msg = bytes(c.readAll()).decode(errors="replace")
-            win.handle_url(msg) if msg.startswith(f"{URL_SCHEME}:") else (win.showNormal(), win.raise_(), win.activateWindow())
+            win.handle_url(msg) if msg != "show" else (win.showNormal(), win.raise_(), win.activateWindow())
         c.disconnectFromServer()
     server.newConnection.connect(incoming)
 
@@ -182,9 +189,14 @@ def main():
 
     class UrlFilter(QObject):
         def eventFilter(self, obj, ev):
-            if ev.type() == QEvent.FileOpen and ev.url().scheme() == URL_SCHEME:
-                win.handle_url(ev.url().toString())
-                return True
+            if ev.type() == QEvent.FileOpen:
+                u = ev.url()
+                if u.scheme() == URL_SCHEME:
+                    win.handle_url(u.toString())
+                    return True
+                if ev.file() and is_flatpak_arg(ev.file()):
+                    win.handle_url(ev.file())
+                    return True
             return False
     f = UrlFilter()
     app.installEventFilter(f)

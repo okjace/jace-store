@@ -626,6 +626,123 @@ class ProjectPage(Page):
         self.refresh()
 
 
+class FlatpakPage(Page):
+    """An app opened from flathub.org (its Install button / appstream:// link) or a .flatpak file."""
+
+    def load(self, target):
+        self.target = target
+        self.info = {}
+        clear(self.body)
+        self._back()
+        self.body.addWidget(label("Loading…", muted=True))
+        self.body.addStretch()
+        if target.kind == "flathub":
+            run_async(lambda ctx: sources.ALL[3].app_info(target.app_id), self._show, lambda e: self._show({}))
+        else:
+            self._show({})
+
+    def _back(self):
+        back = button("← Back")
+        back.setMaximumWidth(100)
+        back.clicked.connect(self.win.back)
+        self.body.addWidget(back)
+
+    def _pkg(self) -> sources.Package:
+        t, d = self.target, self.info
+        if t.kind == "flathub":
+            return sources.Package("flathub", t.app_id, d.get("name") or t.app_id, d.get("summary") or "", "",
+                                   d.get("icon"), f"https://flathub.org/apps/{t.app_id}")
+        return sources.Package("flatpak", t.app_id or (t.path.stem if t.path else "app"), t.title or t.app_id, "", "", None, None,
+                               {"path": str(t.path), "bundle": t.kind == "bundle"})
+
+    def _show(self, info):
+        self.info = info or {}
+        clear(self.body)
+        self._back()
+        t, d = self.target, self.info
+        pkg = self._pkg()
+        head = QHBoxLayout()
+        head.setSpacing(18)
+        icon = QLabel()
+        icon.setFixedSize(96, 96)
+        images.load_into(icon, d.get("icon"), pkg.name, 96)
+        head.addWidget(icon, 0, Qt.AlignTop)
+        col = QVBoxLayout()
+        col.addWidget(label(pkg.name, h1=True))
+        src = "Flathub" if t.kind == "flathub" else ("Flatpak bundle file" if t.kind == "bundle" else f"Flatpak from {t.remote_url}")
+        col.addWidget(label(" · ".join(x for x in (d.get("developer_name"), src, d.get("project_license")) if x), muted=True))
+        if pkg.summary:
+            col.addWidget(label(pkg.summary, wrap=True))
+        head.addLayout(col, 1)
+        acts = QVBoxLayout()
+        self.main_btn = button("", primary=True)
+        self.main_btn.setMinimumWidth(170)
+        self.main_btn.clicked.connect(self._main)
+        self.remove_btn = button("Uninstall", danger=True)
+        self.remove_btn.clicked.connect(self._remove)
+        acts.addWidget(self.main_btn)
+        acts.addWidget(self.remove_btn)
+        if t.kind == "flathub":
+            web = button("View on Flathub")
+            web.clicked.connect(lambda: webbrowser.open(f"https://flathub.org/apps/{t.app_id}"))
+            acts.addWidget(web)
+        acts.addStretch()
+        head.addLayout(acts)
+        self.body.addLayout(head)
+        if not sources.ALL[3].available():
+            self.body.addWidget(label("Flatpak isn't installed on this computer. Install it from your distro's packages first.", wrap=True))
+        if t.kind == "ref":
+            self.body.addWidget(label("This app comes from a Flatpak remote other than Flathub. Only install it if you trust that website.", wrap=True))
+        shots = [s for s in d.get("screenshots") or [] if s.get("sizes")]
+        if shots:
+            strip = QHBoxLayout()
+            for s in shots[:5]:
+                sizes = sorted(s["sizes"], key=lambda z: int(z.get("width") or 0))
+                small = next((z for z in sizes if int(z.get("width") or 0) >= 400), sizes[-1])
+                im = QLabel()
+                im.setFixedSize(160, 160)
+                images.load_into(im, small.get("src"), pkg.name, 160)
+                strip.addWidget(im)
+            strip.addStretch()
+            self.body.addLayout(strip)
+        desc = QTextBrowser()
+        desc.setOpenExternalLinks(True)
+        desc.setHtml(d.get("description") or "<i>No description.</i>")
+        desc.setMinimumHeight(240)
+        self.body.addWidget(desc, 1)
+        self.refresh()
+
+    def _source_id(self):
+        return "flathub" if self.target.kind == "flathub" else "flatpak"
+
+    def record(self):
+        return installed.get(self._source_id(), self._pkg().id)
+
+    def refresh(self):
+        if not hasattr(self, "main_btn"):
+            return
+        rec = self.record()
+        key = f"{self._source_id()}:{self._pkg().id}"
+        busy = self.win.jobs.busy(key)
+        self.main_btn.setEnabled(not busy and sources.ALL[3].available())
+        self.main_btn.setText("Working…" if busy else ("Open" if rec else "Install"))
+        self.remove_btn.setVisible(bool(rec) and not busy)
+
+    def _main(self):
+        rec = self.record()
+        if rec:
+            installer.launch(rec)
+            return
+        self.win.install_package(self._pkg(), after=self.refresh)
+        self.refresh()
+
+    def _remove(self):
+        rec = self.record()
+        if rec and QMessageBox.question(self, APP_NAME, f"Uninstall {rec.get('title')}?") == QMessageBox.Yes:
+            self.win.uninstall(rec, after=self.refresh)
+            self.refresh()
+
+
 class InstalledPage(Page):
     def shown(self):
         clear(self.body)
@@ -764,6 +881,16 @@ class SettingsPage(Page):
         allp.currentIndexChanged.connect(lambda: settings.save(all_platforms=allp.currentData()))
         box.addWidget(allp)
 
+        if sysinfo.os == "linux" and selfinstall.running_installed():
+            box = self._box("Flathub links")
+            fh = QComboBox()
+            fh.addItem("Open Flathub \"Install\" links with Jace Store", True)
+            fh.addItem("Let my software center open them", False)
+            fh.setCurrentIndex(0 if s.get("flathub_links", True) else 1)
+            fh.currentIndexChanged.connect(lambda: selfinstall.set_flatpak_handler(fh.currentData()))
+            box.addWidget(fh)
+            box.addWidget(label("Clicking Install on flathub.org downloads a .flatpakref file; with this on, opening it shows the app here.", muted=True, wrap=True))
+
         box = self._box(f"{APP_NAME} {APP_VERSION}")
         self.upd = label("", muted=True, wrap=True)
         box.addWidget(self.upd)
@@ -864,6 +991,8 @@ class MainWindow(QMainWindow):
             self.stack.addWidget(p)
         self.project = ProjectPage(self)
         self.stack.addWidget(self.project)
+        self.flatpak = FlatpakPage(self)
+        self.stack.addWidget(self.flatpak)
         right = QVBoxLayout()
         right.setSpacing(0)
         right.addWidget(self.stack, 1)
@@ -907,7 +1036,21 @@ class MainWindow(QMainWindow):
         self.pages["Search"].run(q)
 
     def handle_url(self, url: str):
-        """jacestore://project/<slug> (from the website's "Open in Jace Store app" button)."""
+        """jacestore://project/<slug> (the website's "Open in Jace Store app" button), or something
+        from flathub.org: appstream://<app id> or a downloaded .flatpakref / .flatpak file."""
+        from jacestore.flatpak_links import is_flatpak_arg, target_from_arg
+        if is_flatpak_arg(url):
+            target = target_from_arg(url)
+            if target:
+                self.history.append(self.stack.currentWidget())
+                self.flatpak.load(target)
+                self.stack.setCurrentWidget(self.flatpak)
+            else:
+                QMessageBox.warning(self, APP_NAME, f"Couldn't read {url}.")
+            self.showNormal()
+            self.raise_()
+            self.activateWindow()
+            return
         u = QUrl(url)
         if u.scheme() == "jacestore":
             parts = [p for p in (u.host() + u.path()).split("/") if p]

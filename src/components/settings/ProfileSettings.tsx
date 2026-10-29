@@ -26,11 +26,13 @@ export default function ProfileSettings({ profile }: { profile: Profile }) {
         const ext = safeFilename(avatar.name.split(".").pop()?.toLowerCase() || "png");
         avatar_url = await uploadToBucket(supabase, "icons", `${profile.id}/avatar-${Date.now()}.${ext}`, avatar);
       }
-      const { error } = await supabase
-        .from("profiles")
-        .update({ username, display_name: displayName || null, bio: bio || null, avatar_url })
-        .eq("id", profile.id);
-      if (error) throw new Error(error.code === "23505" ? "That username is taken." : error.message);
+      const res = await fetch("/api/account/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, display_name: displayName || null, bio: bio || null, avatar_url }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(out.error ?? res.statusText);
       setAvatar(null);
       setMsg({ ok: true, text: "Profile saved." });
       router.refresh();

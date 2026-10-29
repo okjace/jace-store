@@ -45,7 +45,9 @@ export default async function Browse({ searchParams }: { searchParams: Promise<S
       ? query.order("updated_at", { ascending: false })
       : sort === "newest"
         ? query.order("created_at", { ascending: false })
-        : query.order("downloads", { ascending: false });
+        : sort === "likes"
+          ? query.order("likes", { ascending: false }).order("downloads", { ascending: false })
+          : query.order("downloads", { ascending: false });
   const { data, count, error } = await query.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
   const projects = (data ?? []) as Project[];
   const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));

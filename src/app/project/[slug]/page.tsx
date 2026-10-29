@@ -11,6 +11,11 @@ import DownloadButton, { type DlVersion } from "@/components/DownloadButton";
 import ReportButton from "@/components/ReportButton";
 import { DESKTOP_TYPES } from "@/lib/fileFormats";
 import { dependencyUrl, type Dependency } from "@/lib/dependencyTypes";
+import LikeButton from "@/components/LikeButton";
+import Comments, { type CommentRow } from "@/components/Comments";
+import SaveToCollection from "@/components/SaveToCollection";
+import { currentState, restriction } from "@/lib/accountModeration";
+import { isAdmin } from "@/lib/moderation";
 
 const PACKABLE = ["mod", "resourcepack", "shader"];
 
@@ -22,15 +27,28 @@ async function load(slug: string) {
     .eq("slug", slug)
     .maybeSingle();
   if (!project) return null;
-  const [{ data: versions }, { data: auth }] = await Promise.all([
+  const [{ data: versions }, { data: auth }, { data: comments }] = await Promise.all([
     supabase.from("versions").select("*, files(*)").eq("project_id", project.id).order("created_at", { ascending: false }),
     supabase.auth.getUser(),
+    // (before migration 011 there's no comments table: no comments)
+    supabase.from("comments").select("id, user_id, parent_id, body, created_at, edited_at, author:profiles(username, display_name, avatar_url)")
+      .eq("project_id", project.id).order("created_at").limit(500),
   ]);
+  const me = auth.user?.id ?? null;
+  const [liked, notice, moderator] = me
+    ? await Promise.all([
+        supabase.from("likes").select("project_id").eq("user_id", me).eq("project_id", project.id).maybeSingle().then((r) => !!r.data),
+        currentState(me).then((s) => restriction(s)?.message ?? null),
+        isAdmin(me),
+      ])
+    : [false, null, false];
   return {
     project: project as Project,
     versions: (versions ?? []) as Version[],
-    isOwner: auth.user?.id === project.owner_id,
-    signedIn: !!auth.user,
+    isOwner: me === project.owner_id,
+    signedIn: !!me,
+    me, liked, notice, moderator,
+    comments: (comments ?? []) as unknown as CommentRow[],
   };
 }
 
@@ -42,7 +60,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function ProjectPage({ params }: { params: Promise<{ slug: string }> }) {
   const data = await load((await params).slug);
   if (!data) notFound();
-  const { project, versions, isOwner, signedIn } = data;
+  const { project, versions, isOwner, signedIn, me, liked, notice, moderator, comments } = data;
+  const loginHref = `/login?next=${encodeURIComponent(`/project/${project.slug}`)}`;
   const info = typeInfo(project.type);
   const mode = project.download_mode ?? "latest";
   // The version the Download button points at: the owner's pick, or the newest.
@@ -86,6 +105,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
         </div>
         <div className="flex flex-wrap gap-2">
           {(featuredFile || (mode === "all" && versions.length > 0)) && download("btn-primary px-6! py-2.5! text-base")}
+          <LikeButton slug={project.slug} liked={liked} likes={project.likes ?? 0} signedIn={signedIn} loginHref={loginHref} />
+          <SaveToCollection projectId={project.id} signedIn={signedIn} loginHref={loginHref} />
           {(DESKTOP_TYPES as readonly string[]).includes(project.type) && versions.length > 0 && (
             <a href={`jacestore://project/${project.slug}`} className="btn-ghost" title="Opens the Jace Store desktop app (get it at /desktop)">
               Open in Jace Store app
@@ -173,6 +194,9 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
               ))}
             </ul>
           </section>
+
+          <Comments projectId={project.id} slug={project.slug} title={project.title} initial={comments} me={me}
+            ownerId={project.owner_id} moderator={moderator} notice={notice} loginHref={loginHref} />
         </div>
 
         <aside className="space-y-4">

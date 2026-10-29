@@ -1,3 +1,4 @@
+import { requireCanPost } from "@/lib/accountModeration";
 import { ApiError, handler, ownedVersion, readJson, requireApiUser } from "@/lib/apiAuth";
 import { safeFilename } from "@/lib/filenames";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -9,6 +10,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export const POST = handler(async (req, { params }: { params: Promise<{ id: string }> }) => {
   const userId = await requireApiUser(req);
   const v = await ownedVersion(userId, (await params).id);
+  await requireCanPost(userId);
   const { filename } = await readJson<{ filename?: string }>(req);
   if (!filename) throw new ApiError(400, "filename is required");
   const path = `${userId}/${v.project.id}/${v.id}/${safeFilename(filename)}`;

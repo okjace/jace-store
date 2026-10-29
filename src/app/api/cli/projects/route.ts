@@ -1,3 +1,4 @@
+import { guardPost } from "@/lib/accountModeration";
 import { ApiError, handler, readJson, requireApiUser } from "@/lib/apiAuth";
 import { PROJECT_TYPES, siteUrl, slugify } from "@/lib/constants";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -26,6 +27,7 @@ export const POST = handler(async (req) => {
   if (title.length < 2) throw new ApiError(400, "title is required");
   if (summary.length < 3) throw new ApiError(400, "summary is required (3-256 chars)");
   const slug = slugify(String(b.slug ?? title));
+  await guardPost(userId, "project", { names: [title, slug], texts: [summary, String(b.description ?? "")] });
   const { data, error } = await createAdminClient()
     .from("projects")
     .insert({

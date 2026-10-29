@@ -20,4 +20,4 @@ export const fileOut = (f: FileRow) => ({
   desktop: fileInstallInfo(f),
 });
 
-export const PROJECT_FIELDS = ["title", "summary", "description", "categories", "source_url", "issues_url", "license", "download_mode", "primary_version_id"] as const;
+export const PROJECT_FIELDS = ["title", "summary", "description", "categories", "source_url", "issues_url", "license", "download_mode", "primary_version_id", "icon_url", "gallery"] as const;

@@ -219,6 +219,7 @@ export const isBedrock = (t: string) => typeInfo(t).edition === "bedrock";
 
 export const SORTS = [
   { id: "downloads", label: "Downloads" },
+  { id: "likes", label: "Most liked" },
   { id: "updated", label: "Recently updated" },
   { id: "newest", label: "Newest" },
 ] as const;
