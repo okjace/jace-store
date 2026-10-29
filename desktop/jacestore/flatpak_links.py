@@ -7,7 +7,7 @@ Jace Store registers for both (and .flatpak bundles) on Linux, then opens a page
 import configparser
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
 
 FLATHUB_REPO = "dl.flathub.org"
 
@@ -46,7 +46,8 @@ def target_from_arg(arg: str) -> FlatpakTarget | None:
         a = a[len("flatpak+"):]
         low = a.lower()
     if low.startswith("file://"):
-        a = unquote(urlparse(a).path)
+        from urllib.request import url2pathname
+        a = url2pathname(urlparse(a).path)     # file:///C:/x on Windows, file:///home/x elsewhere
     p = Path(a).expanduser()
     if p.suffix == ".flatpak" and p.is_file():
         return FlatpakTarget("bundle", path=p, title=p.stem)
