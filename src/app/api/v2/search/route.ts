@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   const supabase = createPublicClient();
   let query = supabase
     .from("projects")
-    .select("*, owner:profiles(username, display_name, avatar_url)", { count: "exact" });
+    .select("*, owner:profiles!projects_owner_id_fkey(username, display_name, avatar_url)", { count: "exact" });
   if (q) query = query.or(`title.ilike.%${q}%,summary.ilike.%${q}%`);
 
   let facets: string[][] = [];

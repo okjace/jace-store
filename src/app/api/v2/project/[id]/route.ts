@@ -10,7 +10,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const supabase = createPublicClient();
   const { data } = await supabase
     .from("projects")
-    .select("*, owner:profiles(username, display_name, avatar_url), versions!versions_project_id_fkey(id, created_at)")
+    .select("*, owner:profiles!projects_owner_id_fkey(username, display_name, avatar_url), versions!versions_project_id_fkey(id, created_at)")
     .eq(UUID_RE.test(id) ? "id" : "slug", id)
     .maybeSingle();
   if (!data) return notFound("project");

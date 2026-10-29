@@ -23,7 +23,7 @@ async function load(slug: string) {
   const supabase = await createClient();
   const { data: project } = await supabase
     .from("projects")
-    .select("*, owner:profiles(username, display_name, avatar_url)")
+    .select("*, owner:profiles!projects_owner_id_fkey(username, display_name, avatar_url)")
     .eq("slug", slug)
     .maybeSingle();
   if (!project) return null;

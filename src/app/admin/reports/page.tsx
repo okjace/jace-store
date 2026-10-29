@@ -10,8 +10,8 @@ import ReportActions from "@/components/ReportActions";
 export const metadata = { title: "Reports" };
 
 // with comment reports (migration 011); before that, the same without them
-const SELECT_011 = "id, reason, details, status, created_at, resolved_at, resolution_note, comment_id, comment:comments(id, body, author:profiles(id, username)), reporter:profiles!reports_reporter_id_fkey(username), project:projects(id, slug, title, type, downloads, owner:profiles(username))";
-const SELECT_OLD = "id, reason, details, status, created_at, resolved_at, resolution_note, reporter:profiles!reports_reporter_id_fkey(username), project:projects(id, slug, title, type, downloads, owner:profiles(username))";
+const SELECT_011 = "id, reason, details, status, created_at, resolved_at, resolution_note, comment_id, comment:comments(id, body, author:profiles(id, username)), reporter:profiles!reports_reporter_id_fkey(username), project:projects(id, slug, title, type, downloads, owner:profiles!projects_owner_id_fkey(username))";
+const SELECT_OLD = "id, reason, details, status, created_at, resolved_at, resolution_note, reporter:profiles!reports_reporter_id_fkey(username), project:projects(id, slug, title, type, downloads, owner:profiles!projects_owner_id_fkey(username))";
 
 interface Row {
   comment_id?: string | null;

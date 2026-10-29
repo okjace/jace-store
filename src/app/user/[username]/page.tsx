@@ -19,7 +19,7 @@ export default async function UserPage({ params }: { params: Promise<{ username:
   if (!profile) notFound();
   const { data } = await supabase
     .from("projects")
-    .select("*, owner:profiles(username, display_name, avatar_url)")
+    .select("*, owner:profiles!projects_owner_id_fkey(username, display_name, avatar_url)")
     .eq("owner_id", profile.id)
     .order("downloads", { ascending: false });
   const projects = (data ?? []) as Project[];

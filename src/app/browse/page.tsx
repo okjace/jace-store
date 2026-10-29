@@ -30,7 +30,7 @@ export default async function Browse({ searchParams }: { searchParams: Promise<S
   const supabase = await createClient();
   let query = supabase
     .from("projects")
-    .select("*, owner:profiles(username, display_name, avatar_url)", { count: "exact" });
+    .select("*, owner:profiles!projects_owner_id_fkey(username, display_name, avatar_url)", { count: "exact" });
   if (type) query = query.eq("type", type);
   else if (group) query = query.in("type", typesInGroup(group).map((t) => t.id));
   if (q) {

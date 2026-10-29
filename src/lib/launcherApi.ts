@@ -25,7 +25,7 @@ export function typesForEdition(edition: string | null): string[] | null {
   return null;
 }
 
-const OWNER = "owner:profiles(username, display_name, avatar_url)";
+const OWNER = "owner:profiles!projects_owner_id_fkey(username, display_name, avatar_url)";
 
 export function launcherFile(f: FileRow) {
   return {

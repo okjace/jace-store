@@ -13,7 +13,7 @@ export async function GET(req: Request) {
   const filters = [uuids.length && `id.in.(${uuids.join(",")})`, slugs.length && `slug.in.(${slugs.join(",")})`].filter(Boolean);
   const { data } = await createPublicClient()
     .from("projects")
-    .select("*, owner:profiles(username, display_name, avatar_url), versions!versions_project_id_fkey(id)")
+    .select("*, owner:profiles!projects_owner_id_fkey(username, display_name, avatar_url), versions!versions_project_id_fkey(id)")
     .or(filters.join(","));
   return json(((data ?? []) as (Project & { versions: { id: string }[] })[]).map((p) => serializeProject(p, p.versions.map((v) => v.id))));
 }

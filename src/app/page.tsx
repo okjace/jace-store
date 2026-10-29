@@ -9,7 +9,7 @@ export const revalidate = 60;
 export default async function Home({ searchParams }: { searchParams: Promise<{ deleted?: string }> }) {
   const { deleted } = await searchParams;
   const supabase = await createClient();
-  const select = "*, owner:profiles(username, display_name, avatar_url)";
+  const select = "*, owner:profiles!projects_owner_id_fkey(username, display_name, avatar_url)";
   const [{ data: popular }, { data: fresh }, { count }] = await Promise.all([
     supabase.from("projects").select(select).order("downloads", { ascending: false }).limit(6),
     supabase.from("projects").select(select).order("updated_at", { ascending: false }).limit(6),

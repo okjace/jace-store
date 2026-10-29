@@ -10,7 +10,7 @@ async function load(id: string) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   const supabase = await createClient();
   const { data: c } = await supabase.from("collections")
-    .select("*, owner:profiles(username, display_name), collection_items(added_at, project:projects(*, owner:profiles(username, display_name, avatar_url)))")
+    .select("*, owner:profiles!collections_owner_id_fkey(username, display_name), collection_items(added_at, project:projects(*, owner:profiles!projects_owner_id_fkey(username, display_name, avatar_url)))")
     .eq("id", id).maybeSingle();                  // private ones are only visible to their owner (RLS)
   if (!c) return null;
   const { data: { user } } = await supabase.auth.getUser();

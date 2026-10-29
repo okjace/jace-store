@@ -10,7 +10,7 @@ import type { FileRow, Project, Version } from "./types";
  */
 
 export const isDesktopType = (t: string) => (DESKTOP_TYPES as readonly string[]).includes(t);
-export const PROJECT_SELECT = "*, owner:profiles(username, display_name, avatar_url)";
+export const PROJECT_SELECT = "*, owner:profiles!projects_owner_id_fkey(username, display_name, avatar_url)";
 
 export function desktopFile(f: FileRow) {
   return {
