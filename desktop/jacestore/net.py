@@ -11,8 +11,7 @@ session = requests.Session()
 session.headers["User-Agent"] = f"JaceStoreDesktop/{APP_VERSION} (+{STORE_URL}/desktop)"
 
 
-class Cancelled(Exception):
-    pass
+from jacestore.cancel import Cancelled, current as current_token  # noqa: E402 - re-exported
 
 
 def get_json(url: str, **kw):
@@ -32,8 +31,11 @@ def download(url: str, dest: Path, progress=None, sha1: str | None = None, cance
         total = int(r.headers.get("Content-Length") or 0) or None
         done = 0
         with open(part, "wb") as f:
+            tok = current_token()
             for chunk in r.iter_content(1 << 16):
-                if cancel and cancel():
+                if (cancel and cancel()) or (tok and tok.cancelled):
+                    f.close()
+                    part.unlink(missing_ok=True)
                     raise Cancelled()
                 f.write(chunk)
                 h.update(chunk)

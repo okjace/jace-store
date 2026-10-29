@@ -12,6 +12,12 @@ computer already trusts, all in one window.
   downloads it and opens their own installer.
 - **More than Jace Store:** search and install from **winget** (Windows), **Homebrew** (Mac), and
   **Flathub**, **Snap**, your **distro's packages** (apt, dnf, zypper, pacman) and the **AUR** (Linux).
+- **Browse everything:** categories and an A-Z index for every source, plus web search for anything else.
+- **Many package managers:** AppImageHub, Chocolatey, Scoop, MacPorts, the Mac App Store, Nix, Cargo, npm, pipx
+  and more, or add your own.
+- **My apps:** keep any program or website in your own private library with your own logos, or add every
+  app on your computer at once. It never leaves your computer.
+- **Cancel anytime:** stop an install or clear the queue.
 - **Updates in one place:** see which apps have updates and update them with one click. Jace Store updates itself too.
 - **Open from the website:** the "Open in Jace Store app" button on any app's page opens it here.
 - **Works with Flathub's website:** on Linux, clicking **Install** on flathub.org opens the app in Jace Store.

@@ -5,9 +5,14 @@ computer already uses, in one window. Python + PySide6, built the same way as Ja
 
 | | Jace Store catalog | Other sources |
 |---|---|---|
-| **Windows** | `.msi`, `.msix`, portable `.exe` / `.zip` (installed with a Start menu shortcut), or installer `.exe` files opened for you | winget |
-| **macOS** | `.dmg`, `.app.zip`, `.pkg` (moved into Applications) | Homebrew casks |
-| **Linux** | `.deb` / `.rpm` / pacman packages for *your* distro family, AppImage (with a menu entry), Flatpak, Snap, `.tar.gz` | your distro's packages (apt, dnf, zypper, pacman), Flathub, Snap, the AUR (Arch-based) |
+| **Windows** | `.msi`, `.msix`, portable `.exe` / `.zip` (installed with a Start menu shortcut), or installer `.exe` files opened for you | winget, Chocolatey, Scoop |
+| **macOS** | `.dmg`, `.app.zip`, `.pkg` (moved into Applications) | Homebrew (apps and formulae), MacPorts, the Mac App Store (mas), Nix |
+| **Linux** | `.deb` / `.rpm` / pacman packages for *your* distro family, AppImage (with a menu entry), Flatpak, Snap, `.tar.gz` | your distro's packages (apt, dnf, zypper, pacman, xbps, apk, eopkg), Flathub, Snap, the AUR, AppImageHub, Nix, Homebrew |
+| **Everywhere** | | Cargo, npm, pipx, **your own package managers** (Settings), and web search |
+
+Every source can be browsed without searching (categories, an A-Z index, pages). Installs can be cancelled.
+**My apps** is a private library (`library.json`, never uploaded) for programs and websites that aren't from a
+package manager, with your own logos; it can also add every app already on the computer.
 
 ## How it picks a file
 The store's desktop API (`/api/desktop/v1`) describes every file with a **format**, **platform**

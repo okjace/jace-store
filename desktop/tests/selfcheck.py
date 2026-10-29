@@ -157,6 +157,74 @@ t = target_from_arg(str(other))
 check("other remote's .flatpakref -> ref", t and t.kind == "ref" and t.app_id == "com.example.Thing", t)
 check("is_flatpak_arg", is_flatpak_arg("appstream://x") and is_flatpak_arg("/tmp/a.flatpakref") and not is_flatpak_arg("jacestore://project/x"))
 
+# --- package managers described by their commands ----------------------------------------------------------
+from jacestore import cancel, library, settings  # noqa: E402
+specs = {s_["id"]: s_ for s_ in sources.BUILTIN_SPECS}
+samples = {
+    "choco": ("firefox|133.0.3\ngoogle-chrome|131.0\n", [("firefox", "133.0.3")]),
+    "cargo": ('ripgrep = "14.1.1"    # ripgrep is a line-oriented search tool\n... and 300 crates more\n', [("ripgrep", "14.1.1")]),
+    "xbps": ("[-] firefox-133.0_1     Lightweight web browser\n", [("firefox", "133.0_1")]),
+    "apk": ("firefox-133.0-r0 - Firefox web browser\n", [("firefox", "133.0-r0")]),
+    "mas": ("  497799835  Xcode           (16.2)\n 1295203466  Microsoft Remote Desktop  (10.9.10)\n", [("497799835", "16.2")]),
+    "macports": ("firefox\t133.0\twww\tMozilla Firefox\n", [("firefox", "133.0")]),
+    "eopkg": ("firefox - Mozilla Firefox\n", [("firefox", "")]),
+    "npm": ('[{"name":"typescript","version":"5.7.2","description":"TS","links":{"npm":"https://npmjs.com/typescript"}}]', [("typescript", "5.7.2")]),
+    "nix": ('{"legacyPackages.x86_64-linux.firefox":{"pname":"firefox","version":"133.0","description":"Web browser"}}', [("firefox", "133.0")]),
+}
+for sid, (text, want) in samples.items():
+    got = [(p_.id, p_.version) for p_ in sources.CommandSource(specs[sid])._parse(text)][:len(want)]
+    check(f"{sid} output parsed", got == want, got)
+check("command placeholders", sources._fill("pkg install {id} --yes", id="a b") == ["pkg", "install", "a b", "--yes"])
+check("command placeholders (list)", sources._fill(["nix", "profile", "install", "nixpkgs#{id}"], id="hello")[-1] == "nixpkgs#hello")
+settings.save(custom_sources=[{"name": "My PM", "program": sys.executable, "search": f'"{sys.executable}" -c "print(\'pkg-{{query}} A thing\')"',
+                               "install": "true {id}", "systems": [s.os], "parse": "regex"}])
+cs = sources.custom_sources()
+check("custom package manager loads", len(cs) == 1 and cs[0].id == "custom-my-pm" and cs[0].available(), [c.id for c in cs])
+res = cs[0].search("zz") if cs else []
+check("custom package manager searches", [p_.id for p_ in res] == ["pkg-zz"] and res[0].summary == "A thing", [(p_.id, p_.summary) for p_ in res])
+check("custom package manager is offered", any(x.id == "custom-my-pm" for x in sources.for_this_computer()))
+settings.save(custom_sources=[])
+
+# --- My apps (private library) --------------------------------------------------------------------------------
+a1 = library.add("Thing", sys.executable, "exec", website="https://example.com")
+check("library add", any(x["id"] == a1["id"] for x in library.load()))
+logo = TMP / "logo.png"
+logo.write_bytes(b"\x89PNG\r\n\x1a\n")
+path = library.set_logo(a1["id"], str(logo))
+check("custom logo stored", Path(path).exists() and next(x for x in library.load() if x["id"] == a1["id"])["icon"] == path)
+library.update(a1["id"], name="Renamed")
+check("library edit", next(x for x in library.load() if x["id"] == a1["id"])["name"] == "Renamed")
+library.remove(a1["id"])
+check("library remove (and its logo)", not any(x["id"] == a1["id"] for x in library.load()) and not Path(path).exists())
+found = library.scan_system()
+check("scan this computer", isinstance(found, list), type(found))
+print(f"     found {len(found)} apps on this computer")
+n = library.import_system(found[:3])
+check("add scanned apps (no duplicates on a second run)", library.import_system(found[:3]) == 0 and n == len(found[:3]))
+
+# --- cancelling ------------------------------------------------------------------------------------------------
+import threading  # noqa: E402
+tok = cancel.Token()
+result = {}
+
+
+def job():
+    cancel.set_current(tok)
+    try:
+        installer.run([sys.executable, "-c", "import time; time.sleep(30)"], log=lambda *_: None)
+        result["r"] = "finished"
+    except cancel.Cancelled:
+        result["r"] = "cancelled"
+
+
+th = threading.Thread(target=job)
+th.start()
+import time as _t  # noqa: E402
+_t.sleep(1.5)
+tok.cancel()
+th.join(10)
+check("cancel stops a running command", result.get("r") == "cancelled" and not th.is_alive(), result)
+
 # --- main-program guessing ---------------------------------------------------------------------------------
 g = TMP / "guess"
 for name, size in (("bin/helper", 10), ("MyGame", 5_000_000), ("bin/crashreporter", 9_000_000)):

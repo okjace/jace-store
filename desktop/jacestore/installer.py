@@ -17,7 +17,7 @@ import time
 import zipfile
 from pathlib import Path
 
-from jacestore import paths
+from jacestore import cancel, paths
 from jacestore.net import download
 from jacestore.system import child_env, detect, terminal_command, which
 
@@ -43,13 +43,24 @@ def run(cmd: list, log=print, check=True, input_text: str | None = None) -> str:
     if input_text is not None:
         p.stdin.write(input_text)
         p.stdin.close()
+    tok = cancel.current()
+    if tok:
+        tok.track(p)
+        if tok.cancelled:
+            p.terminate()
     out = []
-    for line in p.stdout:
-        line = line.rstrip()
-        if line:
-            out.append(line)
-            log(line)
-    p.wait()
+    try:
+        for line in p.stdout:
+            line = line.rstrip()
+            if line:
+                out.append(line)
+                log(line)
+        p.wait()
+    finally:
+        if tok:
+            tok.untrack(p)
+    if tok and tok.cancelled:
+        raise cancel.Cancelled()
     text = "\n".join(out)
     if check and p.returncode != 0:
         if p.returncode in (126, 127) and cmd and str(cmd[0]).endswith("pkexec"):

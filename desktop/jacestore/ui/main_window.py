@@ -1,13 +1,16 @@
 """The Jace Store window: Discover, Search, project pages, Installed, Updates, Settings."""
 import webbrowser
 
-from PySide6.QtCore import Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QIcon
-from PySide6.QtWidgets import (QButtonGroup, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
+from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QIcon, QPixmap
+from PySide6.QtCore import QFileInfo
+from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFileDialog, QFileIconProvider, QFrame, QGridLayout, QHBoxLayout, QLabel, QLayout, QLineEdit, QMenu,
                                QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar,
                                QPushButton, QScrollArea, QStackedWidget, QTextBrowser, QVBoxLayout, QWidget)
 
-from jacestore import APP_NAME, APP_VERSION, STORE_URL, actions, installed, installer, selfinstall, settings, sources, store, updater
+from pathlib import Path
+
+from jacestore import APP_NAME, APP_VERSION, STORE_URL, actions, cancel, installed, installer, library, selfinstall, settings, sources, store, updater
 from jacestore.app_assets import asset
 from jacestore.system import detect
 from jacestore.ui import images
@@ -29,7 +32,7 @@ def label(text="", muted=False, h1=False, h2=False, wrap=False, sel=False) -> QL
 
 
 def button(text, primary=False, danger=False, chip=False) -> QPushButton:
-    b = QPushButton(text)
+    b = QPushButton(text.replace("&", "&&"))     # "&" marks a keyboard shortcut in Qt
     b.setCursor(Qt.PointingHandCursor)
     for k, v in (("primary", primary), ("danger", danger), ("chip", chip)):
         if v:
@@ -75,6 +78,8 @@ def scroller(inner: QWidget) -> QScrollArea:
 
 # --- jobs (installs run one at a time) -------------------------------------------------------
 
+CANCELLED = object()
+
 class JobPanel(QFrame):
     """Bottom bar: the running install with progress, and its log."""
     finished = Signal()
@@ -95,9 +100,16 @@ class JobPanel(QFrame):
         self.more = label("", muted=True)
         self.toggle = button("Show details")
         self.toggle.clicked.connect(self._toggle_log)
+        self.stop = button("Cancel", danger=True)
+        self.stop.clicked.connect(self.cancel_current)
+        self.stop_all = button("Cancel all")
+        self.stop_all.clicked.connect(self.cancel_all)
+        self.token = None
         row.addWidget(self.title, 1)
         row.addWidget(self.more)
         row.addWidget(self.bar)
+        row.addWidget(self.stop)
+        row.addWidget(self.stop_all)
         row.addWidget(self.toggle)
         lay.addLayout(row)
         self.log = QPlainTextEdit()
@@ -125,15 +137,40 @@ class JobPanel(QFrame):
 
     def _update_more(self):
         self.more.setText(f"{len(self.queue)} waiting" if self.queue else "")
+        self.stop.setVisible(bool(self.current))
+        self.stop_all.setVisible(bool(self.queue))
+
+    def cancel_current(self):
+        if not self.current or not self.token:
+            return
+        self.stop.setEnabled(False)
+        if self.token.cancel():
+            self.title.setText(f"Cancelling {self.current[1].lower()}…")
+        else:
+            self.title.setText("Can't stop the system installer midway; it stops right after this step…")
+
+    def cancel_all(self):
+        dropped = self.queue
+        self.queue = []
+        for key, title, fn, on_done in dropped:
+            self.log.appendPlainText(f"Cancelled before starting: {title}")
+            if on_done:
+                on_done(None, "cancelled")
+        self.cancel_current()
+        self._update_more()
 
     def _next(self):
         if not self.queue:
             self.current = None
+            self.token = None
+            self._update_more()
             QTimer.singleShot(4000, lambda: self.hide() if not self.current else None)
             self.finished.emit()
             return
         self.current = self.queue.pop(0)
         key, title, fn, on_done = self.current
+        self.token = cancel.Token()
+        self.stop.setEnabled(True)
         self._update_more()
         self.show()
         self.title.setText(title)
@@ -146,6 +183,15 @@ class JobPanel(QFrame):
                 self.bar.setValue(int(done * 1000 / total))
 
         def done(result):
+            if result is CANCELLED:
+                self.bar.setRange(0, 1)
+                self.bar.setValue(0)
+                self.title.setText(f"Cancelled: {title}")
+                self.log.appendPlainText("Cancelled")
+                if on_done:
+                    on_done(None, "cancelled")
+                self._next()
+                return
             self.bar.setRange(0, 1)
             self.bar.setValue(1)
             self.title.setText(f"✓ {title.replace('Installing', 'Installed').replace('Updating', 'Updated').replace('Removing', 'Removed')}")
@@ -163,7 +209,18 @@ class JobPanel(QFrame):
             QMessageBox.warning(self.window(), APP_NAME, f"{title} failed.\n\n{msg}")
             self._next()
 
-        run_async(lambda ctx: fn(ctx.log, ctx.progress), done, failed, progress, self.log.appendPlainText)
+        token = self.token
+
+        def work(ctx):
+            cancel.set_current(token)
+            try:
+                return fn(ctx.log, ctx.progress)
+            except cancel.Cancelled:
+                return CANCELLED
+            finally:
+                cancel.set_current(None)
+
+        run_async(work, done, failed, progress, self.log.appendPlainText)
 
 
 # --- cards & rows --------------------------------------------------------------------------------
@@ -379,29 +436,90 @@ class DiscoverPage(Page):
             g.set_hits([], f"Couldn't reach Jace Store: {msg}")
 
 
+class FlowLayout(QLayout):
+    """Lays widgets out left to right, wrapping onto new lines (source chips, A-Z index)."""
+
+    def __init__(self, spacing=6):
+        super().__init__()
+        self.items = []
+        self.setSpacing(spacing)
+        self.setContentsMargins(0, 0, 0, 0)
+
+    def addItem(self, item):
+        self.items.append(item)
+
+    def count(self):
+        return len(self.items)
+
+    def itemAt(self, i):
+        return self.items[i] if 0 <= i < len(self.items) else None
+
+    def takeAt(self, i):
+        return self.items.pop(i) if 0 <= i < len(self.items) else None
+
+    def expandingDirections(self):
+        return Qt.Orientations(0)
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, w):
+        return self._do(QRect(0, 0, w, 0), True)
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self._do(rect, False)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QSize()
+        for it in self.items:
+            size = size.expandedTo(it.minimumSize())
+        return size
+
+    def _do(self, rect, test):
+        x, y, line = rect.x(), rect.y(), 0
+        sp = self.spacing()
+        for it in self.items:
+            if it.widget() and not it.widget().isVisible() and not test:
+                pass
+            hint = it.sizeHint()
+            nx = x + hint.width() + sp
+            if nx - sp > rect.right() and line > 0:
+                x, y = rect.x(), y + line + sp
+                nx, line = x + hint.width() + sp, 0
+            if not test:
+                it.setGeometry(QRect(QPoint(x, y), hint))
+            x, line = nx, max(line, hint.height())
+        return y + line - rect.y()
+
+
 class SearchPage(Page):
+    """Search, or browse each source's catalog (categories, an A-Z index, pages) when nothing's typed."""
+    JACE_CATS = [("", "Everything"), ("app", "Apps"), ("game", "Games")]
+
     def __init__(self, win):
         super().__init__(win)
         row = QHBoxLayout()
         self.q = QLineEdit()
-        self.q.setPlaceholderText("Search for apps and games…")
-        self.q.returnPressed.connect(self.run)
+        self.q.setPlaceholderText("Search, or browse below…")
+        self.q.setClearButtonEnabled(True)
+        self.q.returnPressed.connect(lambda: self.run())
         go = button("Search", primary=True)
-        go.clicked.connect(self.run)
+        go.clicked.connect(lambda: self.run())
         row.addWidget(self.q, 1)
         row.addWidget(go)
         self.body.addLayout(row)
-        chips = QHBoxLayout()
-        self.group = QButtonGroup(self)
-        self.srcs = [None, *sources.for_this_computer()]   # None = Jace Store
-        for i, s in enumerate(self.srcs):
-            b = button("Jace Store" if s is None else s.name, chip=True)
-            b.setChecked(i == 0)
-            self.group.addButton(b, i)
-            chips.addWidget(b)
-        chips.addStretch()
-        self.group.idClicked.connect(lambda _: self.run())
-        self.body.addLayout(chips)
+        self.chip_box = QWidget()
+        self.chips = FlowLayout()
+        self.chip_box.setLayout(self.chips)
+        self.body.addWidget(self.chip_box)
+        self.index_box = QWidget()
+        self.index = FlowLayout(4)
+        self.index_box.setLayout(self.index)
+        self.body.addWidget(self.index_box)
         self.status = label("", muted=True, wrap=True)
         self.body.addWidget(self.status)
         self.grid = CardGrid()
@@ -410,45 +528,162 @@ class SearchPage(Page):
         self.rows = QVBoxLayout()
         self.rows.setSpacing(8)
         self.body.addLayout(self.rows)
+        self.more = button("Load more")
+        self.more.clicked.connect(self._load_more)
+        self.more.hide()
+        self.body.addWidget(self.more, 0, Qt.AlignHCenter)
         self.body.addStretch()
         self.gen = 0
+        self.src = None              # None = Jace Store
+        self.category = None
+        self.letter = None
+        self.page = 1
+        self.hits = []
+        self.build_chips()
+
+    def build_chips(self):
+        clear(self.chips)
+        self.srcs = [None, *sources.for_this_computer()]
+        self.group = QButtonGroup(self)
+        for i, s in enumerate(self.srcs):
+            b = button("Jace Store" if s is None else ("🌐 Web" if s.id == "web" else s.name), chip=True)
+            b.setChecked(s is self.src or (s is None and self.src is None))
+            self.group.addButton(b, i)
+            self.chips.addWidget(b)
+        self.group.idClicked.connect(self._pick_source)
+
+    def shown(self):
+        if not self.hits and not self.q.text():
+            self.run()
+
+    def _pick_source(self, i):
+        self.src = self.srcs[i]
+        self.category, self.letter = None, None
+        self.run()
+
+    def _build_index(self):
+        clear(self.index)
+        src = self.src
+        if self.q.text().strip() or (src is not None and src.id == "web"):
+            self.index_box.hide()
+            return
+        cats = self.JACE_CATS if src is None else src.categories()
+        if cats:
+            if self.category is None:
+                self.category = cats[0][0]
+            for cid, lab in cats:
+                b = button(lab, chip=True)
+                b.setChecked(cid == self.category)
+                b.clicked.connect(lambda _=False, c=cid: self._set(category=c))
+                self.index.addWidget(b)
+        if src is not None and src.letters:
+            for L in ["All", *"ABCDEFGHIJKLMNOPQRSTUVWXYZ", "#"]:
+                b = button(L, chip=True)
+                b.setChecked((self.letter or "All") == L)
+                b.setMinimumWidth(34)
+                b.clicked.connect(lambda _=False, x=L: self._set(letter=None if x == "All" else x))
+                self.index.addWidget(b)
+        self.index_box.setVisible(self.index.count() > 0)
+
+    def _set(self, category=..., letter=...):
+        if category is not ...:
+            self.category = category
+        if letter is not ...:
+            self.letter = letter
+        self.run()
 
     def run(self, q: str | None = None):
         if q is not None:
             self.q.setText(q)
-        q = self.q.text().strip()
-        src = self.srcs[self.group.checkedId()]
+            self.src = None
+            for b in self.group.buttons():
+                b.setChecked(self.group.id(b) == 0)
         self.gen += 1
-        gen = self.gen
+        self.page = 1
+        self.hits = []
         clear(self.rows)
         self.grid.set_hits([], "")
+        self.more.hide()
+        self._build_index()
+        self._fetch()
+
+    def _load_more(self):
+        self.page += 1
+        self.more.hide()
+        self._fetch()
+
+    def _fetch(self):
+        gen, page, src = self.gen, self.page, self.src
+        q = self.q.text().strip()
+        cat, letter = self.category, self.letter
         if src is None:
-            self.status.setText("Searching Jace Store…")
+            self.status.setText("Loading Jace Store…")
             all_p = settings.load().get("all_platforms")
-            run_async(lambda ctx: store.search(q, all_platforms=all_p, limit=48),
-                      lambda d: gen == self.gen and self._store(d, q), lambda e: gen == self.gen and self.status.setText(f"Search failed: {e}"))
+            run_async(lambda ctx: store.search(q, type_=cat or None, all_platforms=all_p, page=page, limit=48),
+                      lambda d: gen == self.gen and self._store(d, q), lambda e: gen == self.gen and self.status.setText(f"Couldn't load Jace Store: {e}"))
             return
-        if not src.available():
+        if not src.available() and src.id != "web":
             self.status.setText(src.notice() or f"{src.name} isn't available on this computer.")
             return
-        if not q:
-            self.status.setText(f"Type what you're looking for to search {src.name}.")
+        if not q and src.id == "web":
+            self.status.setText("Type what you're looking for to search the web, e.g. \"obs studio download\".")
             return
-        self.status.setText(f"Searching {src.name}…")
-        run_async(lambda ctx: src.search(q), lambda pk: gen == self.gen and self._pkgs(src, pk),
-                  lambda e: gen == self.gen and self.status.setText(f"{src.name} search failed: {e}"))
+        if not q and not src.categories() and not src.letters:
+            self.status.setText(f"{src.name} can't be browsed. Type what you're looking for to search it.")
+            return
+        self.status.setText(f"Searching {src.name}…" if q else f"Loading {src.name}…")
+
+        def work(ctx):
+            return (src.search(q), False) if q else src.browse(page, cat or None, letter)
+        run_async(work, lambda r: gen == self.gen and self._pkgs(src, *r, q),
+                  lambda e: gen == self.gen and self.status.setText(f"{src.name} failed: {e}"))
 
     def _store(self, data, q):
         hits = data.get("hits", [])
-        self.status.setText(f"{data.get('total', len(hits))} results on Jace Store" + (f" for “{q}”" if q else "")
-                            + ("" if hits else ". Try the other sources above."))
-        self.grid.set_hits(hits, "")
+        self.hits += hits
+        total = data.get("total", len(self.hits))
+        self.status.setText(f"{total} on Jace Store" + (f" for “{q}”" if q else "") + ("" if total else ". Try another source above."))
+        self.grid.set_hits(self.hits, "")
+        self.more.setVisible(data.get("page", 1) < data.get("pages", 1))
 
-    def _pkgs(self, src, pkgs):
-        hint = f"  {src.notice()}" if src.notice() else ""
-        self.status.setText(f"{len(pkgs)} results from {src.name}.{hint}")
+    def _pkgs(self, src, pkgs, more, q):
+        self.hits += pkgs
+        note = src.notice()
+        what = f"for “{q}”" if q else ""
+        self.status.setText(f"{len(self.hits)}{'+' if more else ''} from {src.name} {what}.{('  ' + note) if note else ''}".replace(" .", "."))
         for p in pkgs:
-            self.rows.addWidget(PackageRow(p, self.win))
+            self.rows.addWidget(WebRow(p, self.win) if src.id == "web" else PackageRow(p, self.win))
+        self.more.setVisible(bool(more))
+
+
+class WebRow(QFrame):
+    """A web search result: open it, download-and-install it (direct file links), or add it to My apps."""
+
+    def __init__(self, pkg: sources.Package, win: "MainWindow"):
+        super().__init__()
+        self.setObjectName("card")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(12, 10, 12, 10)
+        col = QVBoxLayout()
+        t = label(pkg.name)
+        t.setStyleSheet("font-weight:700")
+        col.addWidget(t)
+        col.addWidget(label(pkg.extra.get("host", ""), muted=True))
+        if pkg.summary:
+            col.addWidget(label(pkg.summary, muted=True, wrap=True))
+        lay.addLayout(col, 1)
+        o = button("Open")
+        o.clicked.connect(lambda: webbrowser.open(pkg.id))
+        lay.addWidget(o)
+        add = button("Add to My apps")
+        add.setToolTip("Keep this website in My apps (only on this computer)")
+        add.clicked.connect(lambda: win.add_to_library(name=pkg.name, kind="url", target=pkg.id, website=pkg.id))
+        lay.addWidget(add)
+        if pkg.extra.get("direct"):
+            d = button("Download & install", primary=True)
+            d.setToolTip("This link is the app's file itself. Only use files from websites you trust.")
+            d.clicked.connect(lambda: win.install_package(pkg))
+            lay.addWidget(d)
 
 
 class ProjectPage(Page):
@@ -637,7 +872,7 @@ class FlatpakPage(Page):
         self.body.addWidget(label("Loading…", muted=True))
         self.body.addStretch()
         if target.kind == "flathub":
-            run_async(lambda ctx: sources.ALL[3].app_info(target.app_id), self._show, lambda e: self._show({}))
+            run_async(lambda ctx: sources.FLATHUB.app_info(target.app_id), self._show, lambda e: self._show({}))
         else:
             self._show({})
 
@@ -689,7 +924,7 @@ class FlatpakPage(Page):
         acts.addStretch()
         head.addLayout(acts)
         self.body.addLayout(head)
-        if not sources.ALL[3].available():
+        if not sources.FLATHUB.available():
             self.body.addWidget(label("Flatpak isn't installed on this computer. Install it from your distro's packages first.", wrap=True))
         if t.kind == "ref":
             self.body.addWidget(label("This app comes from a Flatpak remote other than Flathub. Only install it if you trust that website.", wrap=True))
@@ -724,7 +959,7 @@ class FlatpakPage(Page):
         rec = self.record()
         key = f"{self._source_id()}:{self._pkg().id}"
         busy = self.win.jobs.busy(key)
-        self.main_btn.setEnabled(not busy and sources.ALL[3].available())
+        self.main_btn.setEnabled(not busy and sources.FLATHUB.available())
         self.main_btn.setText("Working…" if busy else ("Open" if rec else "Install"))
         self.remove_btn.setVisible(bool(rec) and not busy)
 
@@ -741,6 +976,232 @@ class FlatpakPage(Page):
         if rec and QMessageBox.question(self, APP_NAME, f"Uninstall {rec.get('title')}?") == QMessageBox.Yes:
             self.win.uninstall(rec, after=self.refresh)
             self.refresh()
+
+
+def app_pixmap(app: dict, size: int) -> QPixmap:
+    """A library app's logo: the user's own picture, the system icon, or a letter."""
+    icon = app.get("icon")
+    if icon and Path(icon).exists():
+        pm = QIcon(icon).pixmap(size * 2, size * 2) if icon.endswith(".svg") else QPixmap(icon)
+        if not pm.isNull():
+            return images.rounded(pm, size, 0.18)
+    if app.get("kind") in ("app", "shortcut", "exec") and Path(app.get("target", "")).exists():
+        pm = QFileIconProvider().icon(QFileInfo(app["target"])).pixmap(size, size)
+        if not pm.isNull():
+            return pm
+    return images.letter_icon(app.get("name", "?"), size)
+
+
+class AppDialog(QDialog):
+    """Add or edit an app in My apps: name, what to start, a website, notes and your own logo."""
+
+    def __init__(self, parent, app: dict | None = None, **prefill):
+        super().__init__(parent)
+        self.app = app or {}
+        data = {**prefill, **self.app}
+        self.setWindowTitle("Edit app" if app else "Add an app")
+        self.setMinimumWidth(520)
+        lay = QVBoxLayout(self)
+        lay.setSpacing(8)
+        self.logo_file = None
+        top = QHBoxLayout()
+        self.logo = QLabel()
+        self.logo.setFixedSize(72, 72)
+        self.logo.setPixmap(app_pixmap(data, 72) if data.get("name") else images.letter_icon("?", 72))
+        top.addWidget(self.logo)
+        pick = button("Choose a logo…")
+        pick.clicked.connect(self._pick_logo)
+        top.addWidget(pick)
+        top.addStretch()
+        lay.addLayout(top)
+        self.name = QLineEdit(data.get("name", ""))
+        self.kind = QComboBox()
+        for k, lab in (("exec", "A program on this computer"), ("url", "A website"), ("desktop", "A Linux .desktop entry"),
+                       ("app", "A macOS app (.app)"), ("shortcut", "A Windows shortcut (.lnk)")):
+            if k in ("desktop",) and detect().os != "linux" or k == "app" and detect().os != "macos" or k == "shortcut" and detect().os != "windows":
+                continue
+            self.kind.addItem(lab, k)
+        i = self.kind.findData(data.get("kind", "exec"))
+        self.kind.setCurrentIndex(max(0, i))
+        self.target = QLineEdit(data.get("target", ""))
+        self.target.setPlaceholderText("/path/to/program  or  https://…")
+        browse = button("Browse…")
+        browse.clicked.connect(self._pick_target)
+        trow = QHBoxLayout()
+        trow.addWidget(self.target, 1)
+        trow.addWidget(browse)
+        self.args = QLineEdit(data.get("args", ""))
+        self.args.setPlaceholderText("Optional, e.g. --fullscreen")
+        self.website = QLineEdit(data.get("website", ""))
+        self.notes = QPlainTextEdit(data.get("notes", ""))
+        self.notes.setMaximumHeight(80)
+        for lab, w in (("Name", self.name), ("What is it?", self.kind)):
+            lay.addWidget(label(lab, muted=True))
+            lay.addWidget(w)
+        lay.addWidget(label("What to start", muted=True))
+        lay.addLayout(trow)
+        for lab, w in (("Start it with (arguments)", self.args), ("Website", self.website), ("Notes", self.notes)):
+            lay.addWidget(label(lab, muted=True))
+            lay.addWidget(w)
+        lay.addWidget(label("Only on this computer. Apps you add here are never uploaded or shown to anyone.", muted=True, wrap=True))
+        row = QHBoxLayout()
+        row.addStretch()
+        cancel_b = button("Cancel")
+        cancel_b.clicked.connect(self.reject)
+        ok = button("Save", primary=True)
+        ok.clicked.connect(self._save)
+        row.addWidget(cancel_b)
+        row.addWidget(ok)
+        lay.addLayout(row)
+
+    def _pick_logo(self):
+        f, _ = QFileDialog.getOpenFileName(self, "Choose a logo", str(Path.home() / "Pictures"), "Pictures (*.png *.jpg *.jpeg *.webp *.svg *.ico *.bmp)")
+        if f:
+            self.logo_file = f
+            self.logo.setPixmap(app_pixmap({"icon": f, "name": self.name.text()}, 72))
+
+    def _pick_target(self):
+        if self.kind.currentData() == "url":
+            return
+        if detect().os == "macos" and self.kind.currentData() == "app":
+            f = QFileDialog.getExistingDirectory(self, "Choose the app", "/Applications")
+        else:
+            f, _ = QFileDialog.getOpenFileName(self, "Choose the program", str(Path.home()))
+        if f:
+            self.target.setText(f)
+            if not self.name.text().strip():
+                self.name.setText(Path(f).stem.replace("-", " ").replace("_", " ").title())
+
+    def _save(self):
+        name, target, kind = self.name.text().strip(), self.target.text().strip(), self.kind.currentData()
+        if not name or not target:
+            QMessageBox.warning(self, APP_NAME, "Give it a name and say what to start.")
+            return
+        if kind == "url" and not target.startswith(("http://", "https://")):
+            target = "https://" + target
+        if kind != "url" and not Path(target).exists():
+            QMessageBox.warning(self, APP_NAME, f"{target} doesn't exist.")
+            return
+        fields = {"name": name, "kind": kind, "target": target, "args": self.args.text().strip(),
+                  "website": self.website.text().strip(), "notes": self.notes.toPlainText().strip()}
+        if self.app.get("id"):
+            library.update(self.app["id"], **fields)
+            app_id = self.app["id"]
+        else:
+            app_id = library.add(fields["name"], target, kind, None, fields["website"], fields["notes"], "manual", None, fields["args"])["id"]
+        if self.logo_file:
+            library.set_logo(app_id, self.logo_file)
+        self.accept()
+
+
+class AppTile(QFrame):
+    def __init__(self, app: dict, page: "MyAppsPage"):
+        super().__init__()
+        self.setObjectName("card")
+        self.app, self.page = app, page
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedSize(150, 150)
+        self.setToolTip((app.get("notes") or app["name"]) + "\n\nClick to open · right-click for more")
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(10, 14, 10, 10)
+        ic = QLabel()
+        ic.setFixedSize(64, 64)
+        ic.setPixmap(app_pixmap(app, 64))
+        lay.addWidget(ic, 0, Qt.AlignHCenter)
+        n = label(app["name"])
+        n.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
+        n.setWordWrap(True)
+        n.setStyleSheet("font-weight:600")
+        lay.addWidget(n)
+        lay.addStretch()
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.page.open_app(self.app)
+
+    def contextMenuEvent(self, e):
+        m = QMenu(self)
+        m.addAction("Open", lambda: self.page.open_app(self.app))
+        m.addAction("Edit…", lambda: self.page.edit(self.app))
+        m.addAction("Change logo…", lambda: self.page.change_logo(self.app))
+        if self.app.get("website"):
+            m.addAction("Website", lambda: webbrowser.open(self.app["website"]))
+        m.addSeparator()
+        m.addAction("Remove from My apps", lambda: self.page.remove(self.app))
+        m.exec(e.globalPos())
+
+
+class MyAppsPage(Page):
+    """Your own app library: anything, from anywhere, with your own logos. Private to this computer."""
+
+    def __init__(self, win):
+        super().__init__(win)
+        self.body.addWidget(label("My apps", h1=True))
+        self.body.addWidget(label("Your own library: programs from anywhere, websites, games, with your own logos. "
+                                  "It stays on this computer and is never uploaded or shown to anyone.", muted=True, wrap=True))
+        bar = QHBoxLayout()
+        self.filter = QLineEdit()
+        self.filter.setPlaceholderText("Filter…")
+        self.filter.setClearButtonEnabled(True)
+        self.filter.textChanged.connect(self._render)
+        add = button("Add an app", primary=True)
+        add.clicked.connect(lambda: self.win.add_to_library())
+        scan = button("Add all apps on this computer")
+        scan.clicked.connect(self.scan)
+        bar.addWidget(self.filter, 1)
+        bar.addWidget(add)
+        bar.addWidget(scan)
+        self.body.addLayout(bar)
+        self.status = label("", muted=True)
+        self.body.addWidget(self.status)
+        self.tiles = QWidget()
+        self.flow = FlowLayout(10)
+        self.tiles.setLayout(self.flow)
+        self.body.addWidget(self.tiles)
+        self.body.addStretch()
+
+    def shown(self):
+        self._render()
+
+    def _render(self):
+        clear(self.flow)
+        apps = sorted(library.load(), key=lambda a: a["name"].lower())
+        f = self.filter.text().strip().lower()
+        shown = [a for a in apps if not f or f in a["name"].lower() or f in (a.get("notes") or "").lower()]
+        self.status.setText(f"{len(apps)} apps" + (f", {len(shown)} shown" if f else "") if apps
+                            else "Nothing here yet: add an app, or let Jace Store add every app on this computer.")
+        for a in shown:
+            self.flow.addWidget(AppTile(a, self))
+
+    def open_app(self, app):
+        try:
+            library.launch(app)
+        except Exception as e:  # noqa: BLE001 - shown to the user
+            QMessageBox.warning(self, APP_NAME, f"Couldn't open {app['name']}: {e}")
+
+    def edit(self, app):
+        if AppDialog(self, app).exec():
+            self._render()
+
+    def change_logo(self, app):
+        f, _ = QFileDialog.getOpenFileName(self, "Choose a logo", str(Path.home() / "Pictures"), "Pictures (*.png *.jpg *.jpeg *.webp *.svg *.ico *.bmp)")
+        if f:
+            library.set_logo(app["id"], f)
+            self._render()
+
+    def remove(self, app):
+        if QMessageBox.question(self, APP_NAME, f"Remove {app['name']} from My apps?\n\nThis doesn't uninstall it.") == QMessageBox.Yes:
+            library.remove(app["id"])
+            self._render()
+
+    def scan(self):
+        self.status.setText("Looking for apps on this computer…")
+
+        def done(found):
+            n = library.import_system(found)
+            self.status.setText(f"Added {n} app{'s' if n != 1 else ''}." if n else "Every app on this computer is already here.")
+            self._render()
+        run_async(lambda ctx: library.scan_system(), done, lambda e: self.status.setText(f"Couldn't look for apps: {e}"))
 
 
 class InstalledPage(Page):
@@ -847,6 +1308,118 @@ class UpdatesPage(Page):
         self.win.install_project(p["slug"], p["title"], p["id"], updating=True, after=self.shown)
 
 
+class CustomSourceDialog(QDialog):
+    """Add (or edit) a package manager Jace Store doesn't know: its commands, with {query} and {id}."""
+    FORMATS = [("regex", "Each line: the package's name, then a description"), ("lines", "Each line: just a package name"),
+               ("custom", "My own pattern (a regular expression)")]
+
+    def __init__(self, parent, spec: dict | None):
+        super().__init__(parent)
+        self.old = spec
+        spec = spec or {}
+        self.setWindowTitle("Edit package manager" if self.old else "Add a package manager")
+        self.setMinimumWidth(620)
+        lay = QVBoxLayout(self)
+        lay.setSpacing(6)
+        lay.addWidget(label("Tell Jace Store how to use it from a terminal. Write {query} where the search words go "
+                            "and {id} where the package name goes.", muted=True, wrap=True))
+        self.f = {}
+        for key, lab, ph in (("name", "Name", "e.g. Pacstall"), ("program", "Program (to check it's installed)", "e.g. pacstall"),
+                             ("search", "Search command", "e.g. pacstall -S {query}"), ("install", "Install command", "e.g. pacstall -I {id}"),
+                             ("uninstall", "Uninstall command (optional)", "e.g. pacstall -R {id}"),
+                             ("browse", "List everything (optional, for the A-Z index)", "e.g. pacstall -L")):
+            w = QLineEdit(spec.get(key, "") if isinstance(spec.get(key, ""), str) else " ".join(spec.get(key)))
+            w.setPlaceholderText(ph)
+            self.f[key] = w
+            lay.addWidget(label(lab, muted=True))
+            lay.addWidget(w)
+        self.fmt = QComboBox()
+        for k, lab in self.FORMATS:
+            self.fmt.addItem(lab, k)
+        cur = spec.get("parse", "regex")
+        cur = "custom" if cur == "regex" and spec.get("regex") else cur
+        self.fmt.setCurrentIndex(max(0, self.fmt.findData(cur)))
+        self.regex = QLineEdit(spec.get("regex", ""))
+        self.regex.setPlaceholderText(r"e.g. ^(?P<id>\S+)\s+(?P<version>\S+)\s+(?P<summary>.*)$   (groups: id, name, version, summary)")
+        lay.addWidget(label("Search results look like", muted=True))
+        lay.addWidget(self.fmt)
+        lay.addWidget(self.regex)
+        self.root = QCheckBox("Needs administrator (it asks for your password)")
+        self.root.setChecked(bool(spec.get("root")))
+        self.term = QCheckBox("Run install / uninstall in a terminal window (when it asks questions)")
+        self.term.setChecked(bool(spec.get("terminal")))
+        self.term.setVisible(detect().os == "linux")
+        lay.addWidget(self.root)
+        lay.addWidget(self.term)
+        self.test = label("", muted=True, wrap=True)
+        lay.addWidget(self.test)
+        row = QHBoxLayout()
+        tb = button("Test search")
+        tb.clicked.connect(self._test)
+        row.addWidget(tb)
+        row.addStretch()
+        cancel_b = button("Cancel")
+        cancel_b.clicked.connect(self.reject)
+        ok = button("Save", primary=True)
+        ok.clicked.connect(self._save)
+        row.addWidget(cancel_b)
+        row.addWidget(ok)
+        lay.addLayout(row)
+
+    def _spec(self) -> dict | None:
+        v = {k: w.text().strip() for k, w in self.f.items()}
+        if not v["name"] or not v["install"]:
+            QMessageBox.warning(self, APP_NAME, "It needs at least a name and an install command.")
+            return None
+        if "{id}" not in v["install"]:
+            QMessageBox.warning(self, APP_NAME, "The install command needs {id} where the package name goes.")
+            return None
+        if v["search"] and "{query}" not in v["search"]:
+            QMessageBox.warning(self, APP_NAME, "The search command needs {query} where the search words go.")
+            return None
+        fmt = self.fmt.currentData()
+        spec = {**{k: x for k, x in v.items() if x}, "systems": [detect().os], "root": self.root.isChecked(),
+                "terminal": self.term.isChecked() and detect().os == "linux", "parse": "lines" if fmt == "lines" else "regex"}
+        if not spec.get("program"):
+            spec["program"] = v["install"].split()[0]
+        if fmt == "custom":
+            import re as _re
+            try:
+                rx = _re.compile(self.regex.text().strip())
+            except _re.error as e:
+                QMessageBox.warning(self, APP_NAME, f"That pattern isn't valid: {e}")
+                return None
+            if "id" not in rx.groupindex:
+                QMessageBox.warning(self, APP_NAME, "The pattern needs a (?P<id>…) group for the package name.")
+                return None
+            spec["regex"] = self.regex.text().strip()
+        return spec
+
+    def _test(self):
+        spec = self._spec()
+        if not spec:
+            return
+        src = sources.CommandSource({**spec, "id": "test"}, custom=True)
+        if not src.available():
+            self.test.setText(f"Can't find {spec['program']} on this computer.")
+            return
+        self.test.setText("Searching for “a”…")
+        run_async(lambda ctx: src.search("a", 5), lambda r: self.test.setText(
+            "Found: " + ", ".join(f"{p.id}" + (f" ({p.summary[:40]})" if p.summary else "") for p in r) if r else "No results; check the search command and format."),
+            lambda e: self.test.setText(f"Search failed: {e}"))
+
+    def _save(self):
+        spec = self._spec()
+        if not spec:
+            return
+        customs = [c for c in settings.load().get("custom_sources", []) if not self.old or c.get("name") != self.old.get("name")]
+        if any(c.get("name", "").lower() == spec["name"].lower() for c in customs):
+            QMessageBox.warning(self, APP_NAME, "You already have a package manager with that name.")
+            return
+        settings.save(custom_sources=[*customs, spec])
+        self.accept()
+
+
 class SettingsPage(Page):
     def shown(self):
         clear(self.body)
@@ -860,12 +1433,33 @@ class SettingsPage(Page):
             box.addWidget(label(f"Package family: {sysinfo.family} · tools: {', '.join(sysinfo.has) or 'none found'}"
                                 + (" · read-only system" if sysinfo.immutable else ""), muted=True, wrap=True))
 
-        box = self._box("Software sources")
-        box.addWidget(label("Jace Store always searches its own catalog. These are added for your computer:", muted=True, wrap=True))
-        for src in sources.for_this_computer():
+        box = self._box("Package managers")
+        box.addWidget(label("Jace Store always searches its own catalog. Tick the others you want in Search. "
+                            "Ones that aren't installed on this computer are greyed out.", muted=True, wrap=True))
+        off = set(s.get("disabled_sources", []))
+        for src in sources.all_sources():
+            row = QHBoxLayout()
             ok = src.available()
-            note = src.notice()
-            box.addWidget(label(f"{'✓' if ok else '○'}  {src.name}: {src.blurb}" + (f". {note}" if note else ""), wrap=True))
+            cb = QCheckBox(f"{src.name}{'  (yours)' if getattr(src, 'custom', False) else ''}")
+            cb.setChecked(src.id not in off)
+            cb.setEnabled(ok or src.id == "flathub")
+            if not ok and src.id != "flathub":
+                cb.setStyleSheet("color: #8b93a3")
+            cb.toggled.connect(lambda on, sid=src.id: self._toggle_source(sid, on))
+            row.addWidget(cb)
+            note = src.blurb + ("" if ok else f". {src.notice() or 'Not installed'}")
+            row.addWidget(label(note, muted=True, wrap=True), 1)
+            if getattr(src, "custom", False):
+                e = button("Edit")
+                e.clicked.connect(lambda _=False, sp=src.spec: self._edit_custom(sp))
+                r = button("Remove", danger=True)
+                r.clicked.connect(lambda _=False, sp=src.spec: self._remove_custom(sp))
+                row.addWidget(e)
+                row.addWidget(r)
+            box.addLayout(row)
+        add = button("Add your own package manager…")
+        add.clicked.connect(lambda: self._edit_custom(None))
+        box.addWidget(add, 0, Qt.AlignLeft)
 
         box = self._box("Jace Store catalog")
         beta = QComboBox()
@@ -909,6 +1503,24 @@ class SettingsPage(Page):
             box.addWidget(rm)
         self.body.addStretch()
 
+    def _toggle_source(self, sid, on):
+        off = set(settings.load().get("disabled_sources", []))
+        off.discard(sid) if on else off.add(sid)
+        settings.save(disabled_sources=sorted(off))
+        self.win.pages["Search"].build_chips()
+
+    def _edit_custom(self, spec):
+        if CustomSourceDialog(self, spec).exec():
+            self.win.pages["Search"].build_chips()
+            self.shown()
+
+    def _remove_custom(self, spec):
+        if QMessageBox.question(self, APP_NAME, f"Remove {spec['name']}?") == QMessageBox.Yes:
+            customs = [c for c in settings.load().get("custom_sources", []) if c.get("name") != spec["name"]]
+            settings.save(custom_sources=customs)
+            self.win.pages["Search"].build_chips()
+            self.shown()
+
     def _box(self, title):
         f = QFrame()
         f.setObjectName("panel")
@@ -933,7 +1545,7 @@ class SettingsPage(Page):
 # --- window --------------------------------------------------------------------------------------------
 
 class MainWindow(QMainWindow):
-    NAV = ["Discover", "Search", "Installed", "Updates", "Settings"]
+    NAV = ["Discover", "Search", "Installed", "My apps", "Updates", "Settings"]
 
     def __init__(self):
         super().__init__()
@@ -985,7 +1597,7 @@ class MainWindow(QMainWindow):
 
         self.jobs = JobPanel()
         self.stack = QStackedWidget()
-        self.pages = {"Discover": DiscoverPage(self), "Search": SearchPage(self), "Installed": InstalledPage(self),
+        self.pages = {"Discover": DiscoverPage(self), "Search": SearchPage(self), "Installed": InstalledPage(self), "My apps": MyAppsPage(self),
                       "Updates": UpdatesPage(self), "Settings": SettingsPage(self)}
         for p in self.pages.values():
             self.stack.addWidget(p)
@@ -1068,6 +1680,11 @@ class MainWindow(QMainWindow):
         self.jobs.add(f"jacestore:{project_id}", f"{'Updating' if updating else 'Installing'} {title}",
                       lambda log, progress: actions.install_project(slug, log, progress, ch, file_id),
                       lambda res, err: after and after())
+
+    def add_to_library(self, **prefill):
+        if AppDialog(self, None, **prefill).exec():
+            self.show_page("My apps")
+            self.pages["My apps"].shown()
 
     def install_package(self, pkg, after=None):
         self.jobs.add(f"{pkg.source}:{pkg.id}", f"Installing {pkg.name}",

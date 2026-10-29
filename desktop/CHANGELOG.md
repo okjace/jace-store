@@ -1,5 +1,18 @@
 # Jace Store desktop: changelog
 
+## 1.2.0
+- Cancel installs: Cancel stops the running download, installer or package manager, and Cancel all
+  also clears the queue. (System package installs that already asked for your password finish first.)
+- Every source can be browsed without searching: categories (Flathub, Snap, winget, AppImageHub, Jace
+  Store), an A-Z index (your distro's packages, the AUR, Homebrew, AppImageHub) and "Load more" pages.
+- Many more package managers: AppImageHub (AppImages from GitHub releases), Chocolatey and Scoop
+  (Windows), MacPorts and the Mac App Store via mas (macOS), Nix, Homebrew formulae, Void (xbps),
+  Alpine (apk), Solus (eopkg), Cargo, npm and pipx. Turn each on or off in Settings.
+- Add your own package manager in Settings: its search, install and uninstall commands, with a Test button.
+- Web search: find an app's website or download from the app; direct download links can be installed.
+- My apps: a private library for apps that aren't from a package manager. Add any program or website with
+  your own logo, or add every app already on this computer. It never leaves this computer.
+
 ## 1.1.0
 - Opens Flathub's "Install" links: clicking Install on flathub.org (a .flatpakref download) or
   "Open in software manager" (appstream://) shows the app in Jace Store, ready to install.
