@@ -1,0 +1,156 @@
+"""Offline checks for the install logic. Runs on Windows, macOS and Linux (CI and locally).
+Everything happens in temporary folders; nothing is installed on the real system.
+
+    python tests/selfcheck.py
+"""
+import io
+import os
+import sys
+import tarfile
+import tempfile
+import zipfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+TMP = Path(tempfile.mkdtemp(prefix="jacestore-test-"))
+os.environ["JACE_STORE_HOME"] = str(TMP / "home")
+os.environ["JACE_STORE_APPS"] = str(TMP / "apps")
+os.environ["XDG_DATA_HOME"] = str(TMP / "xdg")
+
+from jacestore import installed, installer, sources, system  # noqa: E402
+
+failures = []
+
+
+def check(name, cond, detail=""):
+    print(("ok   " if cond else "FAIL ") + name + (f"  ({detail})" if detail and not cond else ""))
+    if not cond:
+        failures.append(name)
+
+
+# --- distro detection --------------------------------------------------------------------------
+for osr, fam in [({"ID": "ubuntu", "ID_LIKE": "debian"}, "deb"), ({"ID": "linuxmint", "ID_LIKE": "ubuntu debian"}, "deb"),
+                 ({"ID": "fedora"}, "rpm"), ({"ID": "opensuse-tumbleweed", "ID_LIKE": "opensuse suse"}, "rpm"),
+                 ({"ID": "cachyos", "ID_LIKE": "arch"}, "arch"), ({"ID": "endeavouros", "ID_LIKE": "arch"}, "arch"),
+                 ({"ID": "nixos"}, "other"), ({"ID": "pop", "ID_LIKE": "ubuntu debian"}, "deb")]:
+    check(f"family {osr['ID']} -> {fam}", system.family_from(osr) == fam, system.family_from(osr))
+s = system.detect()
+check("detect() gives os/arch", s.os in ("windows", "macos", "linux") and s.arch in ("x64", "arm64"), str(s))
+print("     this computer:", s.describe(), s.query())
+
+# --- winget table parsing -----------------------------------------------------------------------------
+rows_txt = [("Name", "Id", "Version", "Match", "Source"),
+            ("Visual Studio Code", "Microsoft.VisualStudioCode", "1.95.3", "Moniker: vscode", "winget"),
+            ("Firefox", "Mozilla.Firefox", "132.0.2", "", "winget")]
+widths = [20, 28, 10, 17, 6]
+lines = ["".join(c.ljust(w) for c, w in zip(r, widths)).rstrip() for r in rows_txt]
+sample = "   -  \\  |\n" + lines[0] + "\n" + "-" * 81 + "\n" + "\n".join(lines[1:]) + "\n"
+rows = sources._table(sample)
+check("winget table: 2 rows", len(rows) == 2, rows)
+check("winget table: ids", [r.get("Id") for r in rows] == ["Microsoft.VisualStudioCode", "Mozilla.Firefox"], rows)
+
+# --- installed.json --------------------------------------------------------------------------------------
+installed.put("test", "a", {"title": "A"})
+check("installed put/get", installed.get("test", "a")["title"] == "A")
+installed.remove("test", "a")
+check("installed remove", installed.get("test", "a") is None)
+
+# --- installing an app from an archive ------------------------------------------------------------------
+def exe_bytes():
+    return b"#!/bin/sh\necho hello\n" if sys.platform != "win32" else b"MZ" + b"\0" * 64
+
+
+if sys.platform == "darwin":
+    # a zipped .app
+    app = TMP / "src" / "Hello.app" / "Contents" / "MacOS"
+    app.mkdir(parents=True)
+    (app / "Hello").write_bytes(exe_bytes())
+    (app / "Hello").chmod(0o755)
+    z = TMP / "Hello-macos.app.zip"
+    import subprocess
+    subprocess.run(["ditto", "-c", "-k", "--keepParent", str(TMP / "src" / "Hello.app"), str(z)], check=True)
+    rec = installer.install_file(z, "app_zip", slug="hello", title="Hello", log=lambda *_: None)
+    check("mac app_zip installed", Path(rec["launch"]).name == "Hello.app" and Path(rec["launch"]).exists(), rec)
+    installer.uninstall(rec, log=lambda *_: None)
+    check("mac app removed", not Path(rec["launch"]).exists())
+else:
+    # a .zip with a folder inside, a program, a helper and an uninstaller
+    z = TMP / "hello-1.0.zip"
+    main_name = "Hello.exe" if sys.platform == "win32" else "hello"
+    with zipfile.ZipFile(z, "w") as zf:
+        for name in (main_name, "unins000.exe" if sys.platform == "win32" else "uninstall.sh", "readme.txt"):
+            info = zipfile.ZipInfo(f"Hello-1.0/{name}")
+            info.external_attr = (0o755 if name != "readme.txt" else 0o644) << 16
+            zf.writestr(info, exe_bytes() if name != "readme.txt" else b"hi")
+    rec = installer.install_file(z, "zip", slug="hello", title="Hello", log=lambda *_: None)
+    launch = Path(rec.get("launch", ""))
+    check("zip: picked the main program", launch.name == main_name, rec)
+    check("zip: one folder level flattened", launch.parent.name == "Hello", launch)
+    if sys.platform != "win32":
+        check("zip: executable bit kept", os.access(launch, os.X_OK))
+        check("zip: menu entry written", Path(rec["desktop_file"]).exists() and f'Exec="{launch}"' in Path(rec["desktop_file"]).read_text())
+    else:
+        check("zip: Start menu shortcut", any(p.endswith(".lnk") and Path(p).exists() for p in rec["paths"]), rec)
+    installer.uninstall(rec, log=lambda *_: None)
+    check("zip: uninstall removed everything", not any(Path(p).exists() for p in rec["paths"]), rec)
+
+if sys.platform.startswith("linux"):
+    # tar.gz (with a path-traversal entry, which must be refused)
+    t = TMP / "tool.tar.gz"
+    with tarfile.open(t, "w:gz") as tf:
+        data = exe_bytes()
+        ti = tarfile.TarInfo("tool/bin/tool")
+        ti.size, ti.mode = len(data), 0o755
+        tf.addfile(ti, io.BytesIO(data))
+        evil = tarfile.TarInfo("../evil.txt")
+        evil.size = 1
+        tf.addfile(evil, io.BytesIO(b"x"))
+    try:
+        installer.install_file(t, "tar", slug="tool", title="Tool", log=lambda *_: None)
+        check("tar: path traversal refused", False, "extracted an archive with ../")
+    except Exception:  # noqa: BLE001
+        check("tar: path traversal refused", not (TMP / "apps" / "evil.txt").exists())
+    t2 = TMP / "tool2.tar.gz"
+    with tarfile.open(t2, "w:gz") as tf:
+        ti = tarfile.TarInfo("tool/bin/tool")
+        ti.size, ti.mode = len(data), 0o755
+        tf.addfile(ti, io.BytesIO(data))
+    rec = installer.install_file(t2, "tar", slug="tool", title="Tool", log=lambda *_: None)
+    check("tar: installed", Path(rec["launch"]).name == "tool", rec)
+    installer.uninstall(rec, log=lambda *_: None)
+
+    # an AppImage (any executable file works for this test)
+    a = TMP / "Thing-x86_64.AppImage"
+    a.write_bytes(exe_bytes())
+    rec = installer.install_file(a, "appimage", slug="thing", title="Thing", log=lambda *_: None)
+    check("appimage: moved to Applications", Path(rec["launch"]).name == "Thing.AppImage" and os.access(rec["launch"], os.X_OK), rec)
+    check("appimage: menu entry", Path(rec["desktop_file"]).exists())
+    installer.uninstall(rec, log=lambda *_: None)
+    check("appimage: removed", not Path(rec["launch"]).exists() and not Path(rec["desktop_file"]).exists())
+
+    # wrong package type for this distro is refused with a clear message
+    wrong = {"deb": "rpm", "rpm": "pacman", "arch": "deb", "other": "deb"}[s.family or "other"]
+    p = TMP / f"x.{ 'pkg.tar.zst' if wrong == 'pacman' else wrong}"
+    p.write_bytes(b"x")
+    try:
+        installer.install_file(p, wrong, slug="x", title="X", log=lambda *_: None)
+        check("wrong package type refused", False)
+    except installer.InstallError as e:
+        check("wrong package type refused", "doesn't use" in str(e) or "read-only" in str(e), str(e))
+
+# --- main-program guessing ---------------------------------------------------------------------------------
+g = TMP / "guess"
+for name, size in (("bin/helper", 10), ("MyGame", 5_000_000), ("bin/crashreporter", 9_000_000)):
+    f = g / (name + (".exe" if sys.platform == "win32" else ""))
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_bytes(b"x" * size)
+    f.chmod(0o755)
+best = installer.find_main_program(g, "My Game")
+check("find_main_program prefers the named, top-level program", best and best.stem == "MyGame", best)
+
+print()
+if failures:
+    print(f"{len(failures)} FAILED: {', '.join(failures)}")
+    sys.exit(1)
+print("ALL CHECKS OK")

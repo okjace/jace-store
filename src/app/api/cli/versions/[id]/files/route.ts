@@ -1,6 +1,7 @@
 import { ApiError, handler, ownedVersion, readJson, requireApiUser } from "@/lib/apiAuth";
 import { addLinkFile, type LinkInput } from "@/lib/linkFiles";
 import { fileOut } from "@/lib/cliSerialize";
+import { installFields } from "@/lib/fileFormats";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const maxDuration = 300;
@@ -9,6 +10,7 @@ export const maxDuration = 300;
  * POST: attach a file to a version.
  *  { kind: "link", url, filename?, label?, primary?, sha1?, sha512?, size?, skip_hash? }
  *  { kind: "upload", path, filename, sha1, sha512, size, label?, primary? }   (after PUT to upload_url)
+ *  Both also take install_mode (auto|install|open), platform and arch for the desktop app.
  */
 export const POST = handler(async (req, { params }: { params: Promise<{ id: string }> }) => {
   const userId = await requireApiUser(req);
@@ -18,6 +20,8 @@ export const POST = handler(async (req, { params }: { params: Promise<{ id: stri
   if (b.kind === "link" || (!b.kind && b.url)) return fileOut(await addLinkFile(v, b as unknown as LinkInput));
 
   if (b.kind !== "upload") throw new ApiError(400, 'kind must be "link" or "upload"');
+  const inst = installFields(b);
+  if ("error" in inst) throw new ApiError(400, inst.error);
   const path = String(b.path ?? "");
   if (!path.startsWith(`${userId}/${v.project.id}/${v.id}/`)) throw new ApiError(400, "path doesn't belong to this version");
   const sha1 = String(b.sha1 ?? "").toLowerCase();
@@ -49,6 +53,7 @@ export const POST = handler(async (req, { params }: { params: Promise<{ id: stri
       sha1,
       sha512,
       is_external: false,
+      ...inst.patch,
       is_primary: (b.primary as boolean) ?? (count ?? 0) === 0,
     }, { onConflict: "storage_path" })
     .select()

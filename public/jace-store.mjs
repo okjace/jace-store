@@ -33,17 +33,22 @@ Commands:
          [--loaders a,b] [--game-versions 1.21.1,1.21] [--changelog text | --changelog-file f]
          [--file path]... [--link "url|label"]... [--primary-link]
          [--depends modrinth:fabric-api,e4all,modrinth:sodium:optional]
+         [--install-mode auto|install|open]  (apps/games: what the Jace Store app does with the files)
                                       Create a version. Uploaded files come first (the first is
                                       primary) unless --primary-link. Needs at least one file or link.
-  add-file <versionId> <path> [--label l] [--primary]
-  add-link <versionId> <url> [--label l] [--filename f] [--primary] [--skip-hash]
+  add-file <versionId> <path> [--label l] [--primary] [install options]
+  add-link <versionId> <url> [--label l] [--filename f] [--primary] [--skip-hash] [install options]
   edit-version <versionId> [--name] [--version-number] [--changelog | --changelog-file] [--channel]
          [--loaders] [--game-versions] [--depends a,b | --depends none]
   download-mode <slug> latest|all|primary [--version <versionId>]
                                       What the Download button does: newest version, a list of all
                                       versions, or always one primary version
   set-primary <slug> <versionId>      Shortcut for: download-mode <slug> primary --version <id>
-  edit-file <fileId> [--label l] [--filename f] [--primary]
+  edit-file <fileId> [--label l] [--filename f] [--primary] [install options]
+                                      install options (apps/games, for the Jace Store desktop app):
+                                        --install-mode auto|install|open   install it, or download and open it
+                                        --platform any|windows|macos|linux|linux-deb|linux-rpm|linux-arch|android
+                                        --arch any|x64|arm64               ("" = detect from the filename)
   delete-version <versionId>
   delete-file <fileId>
 
@@ -115,7 +120,16 @@ async function api(ctx, method, path, body) {
   return data;
 }
 
-async function uploadFile(ctx, versionId, filePath, { label, primary } = {}, log) {
+/** --install-mode / --platform / --arch flags -> request fields (only the ones given). */
+function installOpts(flags) {
+  const o = {};
+  if (typeof flags["install-mode"] === "string") o.install_mode = flags["install-mode"];
+  if (typeof flags.platform === "string") o.platform = flags.platform || null;
+  if (typeof flags.arch === "string") o.arch = flags.arch || null;
+  return o;
+}
+
+async function uploadFile(ctx, versionId, filePath, { label, primary, ...extra } = {}, log) {
   const bytes = await readFile(filePath);
   const filename = basename(filePath);
   log(`  hashing ${filename} (${fmtBytes(bytes.length)})`);
@@ -133,7 +147,7 @@ async function uploadFile(ctx, versionId, filePath, { label, primary } = {}, log
     throw new CliError(`Upload of ${filename} failed (${put.status}): ${msg.slice(0, 300)}`);
   }
   return api(ctx, "POST", `/versions/${versionId}/files`, {
-    kind: "upload", path, filename, sha1, sha512, size: bytes.length, label, primary,
+    kind: "upload", path, filename, sha1, sha512, size: bytes.length, label, primary, ...extra,
   });
 }
 
@@ -262,10 +276,10 @@ async function main() {
       });
       const added = [];
       try {
-        for (const [i, f] of files.entries()) added.push(await uploadFile(ctx, version.id, f, { primary: !primaryLink && i === 0 }, log));
+        for (const [i, f] of files.entries()) added.push(await uploadFile(ctx, version.id, f, { primary: !primaryLink && i === 0, ...installOpts(flags) }, log));
         for (const [i, l] of links.entries()) {
           log(`  adding link ${l.url}`);
-          added.push(await api(ctx, "POST", `/versions/${version.id}/files`, { kind: "link", ...l, primary: primaryLink && i === 0 }));
+          added.push(await api(ctx, "POST", `/versions/${version.id}/files`, { kind: "link", ...l, primary: primaryLink && i === 0, ...installOpts(flags) }));
         }
       } catch (e) {
         log("  failed, rolling back the version");
@@ -277,13 +291,13 @@ async function main() {
     }
 
     case "add-file":
-      out(await uploadFile(ctx, need(pos[0], "<versionId>"), need(pos[1], "<path>"), { label: flags.label, primary: !!flags.primary }, log),
+      out(await uploadFile(ctx, need(pos[0], "<versionId>"), need(pos[1], "<path>"), { label: flags.label, primary: !!flags.primary, ...installOpts(flags) }, log),
         (f) => `Added ${f.filename} (${f.id})`);
       return;
 
     case "add-link":
       out(await api(ctx, "POST", `/versions/${need(pos[0], "<versionId>")}/files`, {
-        kind: "link", url: need(pos[1], "<url>"), label: flags.label, filename: flags.filename,
+        kind: "link", url: need(pos[1], "<url>"), label: flags.label, filename: flags.filename, ...installOpts(flags),
         primary: !!flags.primary, skip_hash: !!flags["skip-hash"],
       }), (f) => `Added link ${f.label ?? f.filename} (${f.id})${f.sha1 ? "" : " [unverified]"}`);
       return;
@@ -325,6 +339,7 @@ async function main() {
       if (typeof flags.label === "string") body.label = flags.label;
       if (typeof flags.filename === "string") body.filename = flags.filename;
       if (flags.primary) body.primary = true;
+      Object.assign(body, installOpts(flags));
       out(await api(ctx, "PATCH", `/files/${need(pos[0], "<fileId>")}`, body), (f) => `Updated ${f.label ?? f.filename}`);
       return;
     }

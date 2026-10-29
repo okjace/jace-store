@@ -45,6 +45,10 @@ export interface FileRow {
   is_primary: boolean;
   is_external: boolean;
   label: string | null;
+  /** Desktop app: auto | install | open (migration 010) */
+  install_mode?: string | null;
+  platform?: string | null;
+  arch?: string | null;
 }
 
 export interface Version {

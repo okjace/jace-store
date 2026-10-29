@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { ApiError } from "./apiAuth";
+import { installFields } from "./fileFormats";
 import { typeInfo } from "./constants";
 import { createAdminClient } from "./supabase/admin";
 
@@ -48,6 +49,9 @@ export interface LinkInput {
   url: string;
   filename?: string;
   label?: string;
+  install_mode?: string;
+  platform?: string | null;
+  arch?: string | null;
   primary?: boolean;
   sha1?: string;
   sha512?: string;
@@ -81,6 +85,8 @@ export async function addLinkFile(version: { id: string; project: { type: string
   if (sha1 && !/^[0-9a-f]{40}$/i.test(sha1)) throw new ApiError(400, "sha1 must be 40 hex characters");
   if (sha512 && !/^[0-9a-f]{128}$/i.test(sha512)) throw new ApiError(400, "sha512 must be 128 hex characters");
 
+  const inst = installFields(input as unknown as Record<string, unknown>);
+  if ("error" in inst) throw new ApiError(400, inst.error);
   const admin = createAdminClient();
   if (input.primary) await admin.from("files").update({ is_primary: false }).eq("version_id", version.id);
   const { count } = await admin.from("files").select("id", { count: "exact", head: true }).eq("version_id", version.id);
@@ -90,6 +96,7 @@ export async function addLinkFile(version: { id: string; project: { type: string
       version_id: version.id,
       filename: filename.slice(0, 200),
       label: input.label?.trim().slice(0, 80) || null,
+      ...inst.patch,
       url: u.toString(),
       storage_path: null,
       is_external: true,

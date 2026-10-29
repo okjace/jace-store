@@ -1,0 +1,3 @@
+# PySide6 6.10+ needs Windows 10+ DLLs that Wine lacks and macOS 13+; 6.9 keeps both working
+PySide6>=6.9,<6.10
+requests>=2.31

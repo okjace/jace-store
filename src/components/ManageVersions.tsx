@@ -4,12 +4,16 @@ import { useRouter } from "next/navigation";
 import { formatBytes, formatNumber, timeAgo } from "@/lib/constants";
 import type { FileRow, Project, Version } from "@/lib/types";
 import VersionEditor from "./VersionEditor";
+import { ARCHES, DESKTOP_TYPES, detectArch, detectPlatform, INSTALL_MODES, PLATFORMS } from "@/lib/fileFormats";
 
 export default function ManageVersions({ project, versions }: { project: Project; versions: Version[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
+  const desktop = (DESKTOP_TYPES as readonly string[]).includes(project.type);
+  const setFile = (f: FileRow, patch: Record<string, string | null>) =>
+    call(`/api/cli/files/${f.id}`, { method: "PATCH", body: JSON.stringify(patch) }, f.id);
   const isPrimary = (v: Version) => project.download_mode === "primary" && project.primary_version_id === v.id;
 
   function makePrimary(v: Version) {
@@ -86,7 +90,7 @@ export default function ManageVersions({ project, versions }: { project: Project
               )}
               <ul className="mt-2 space-y-1 pl-3">
                 {v.files?.map((f) => (
-                  <li key={f.id} className="flex items-center gap-2 text-xs text-muted">
+                  <li key={f.id} className="flex flex-wrap items-center gap-2 text-xs text-muted">
                     <span>{f.is_external ? "↗ link" : "↓ file"}</span>
                     <span className="mr-auto truncate text-text">{f.label ? `${f.label} · ` : ""}{f.filename}</span>
                     {f.size ? <span>{formatBytes(f.size)}</span> : null}
@@ -99,6 +103,26 @@ export default function ManageVersions({ project, versions }: { project: Project
                     <button onClick={() => labelFile(f)} disabled={busy === f.id} className="hover:text-text hover:underline">label</button>
                     <button onClick={() => confirm(`Remove ${f.filename}?`) && call(`/api/cli/files/${f.id}`, { method: "DELETE" }, f.id)}
                       disabled={busy === f.id} className="text-red-300 hover:underline">remove</button>
+                    {desktop && (
+                      <div className="flex w-full flex-wrap items-center gap-2 pb-2 pl-12">
+                        <span title="Which computers get this file in the Jace Store app">For</span>
+                        <select className="input w-auto! py-0.5! text-xs" value={f.platform ?? ""} disabled={busy === f.id}
+                          onChange={(e) => setFile(f, { platform: e.target.value || null })}>
+                          <option value="">Auto: {PLATFORMS.find((p) => p.id === detectPlatform(f.filename))?.label}</option>
+                          {PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                        </select>
+                        <select className="input w-auto! py-0.5! text-xs" value={f.arch ?? ""} disabled={busy === f.id}
+                          onChange={(e) => setFile(f, { arch: e.target.value || null })}>
+                          <option value="">Auto: {ARCHES.find((a) => a.id === detectArch(f.filename))?.label}</option>
+                          {ARCHES.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+                        </select>
+                        <select className="input w-auto! py-0.5! text-xs" value={f.install_mode ?? "auto"} disabled={busy === f.id}
+                          title={INSTALL_MODES.find((m) => m.id === (f.install_mode ?? "auto"))?.hint}
+                          onChange={(e) => setFile(f, { install_mode: e.target.value })}>
+                          {INSTALL_MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                        </select>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

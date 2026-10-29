@@ -51,3 +51,10 @@ Or import the repo at [vercel.com/new](https://vercel.com/new). Add the env vars
 ## Notes
 - The Modrinth App only downloads `.mrpack` files from an allow-list of hosts (Modrinth, GitHub, …), so packs generated here are best imported with **Prism Launcher** or **ATLauncher**.
 - There is no moderation queue yet: anything uploaded is public immediately. Consider adding reports/moderation before opening it up widely.
+
+## Desktop app
+[`desktop/`](desktop) is the Jace Store desktop app (Windows, macOS, Linux). It installs apps and games from the store
+and from winget, Homebrew, Flathub, Snap, distro packages and the AUR. It's built and released by
+[`.github/workflows/desktop.yml`](.github/workflows/desktop.yml); see [desktop/README.md](desktop/README.md).
+Run `supabase/migrations/010_install_options.sql` for the per-file install options it uses.
+

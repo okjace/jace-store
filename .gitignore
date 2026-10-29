@@ -6,3 +6,10 @@ out
 .vercel
 *.tsbuildinfo
 next-env.d.ts
+
+# desktop app
+desktop/.venv
+desktop/build
+desktop/dist
+__pycache__/
+*.pyc

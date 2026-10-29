@@ -1,0 +1,270 @@
+# Builds the Jace Store desktop app (desktop/) for Windows, macOS and Linux on GitHub's runners,
+# tests each self-installer (install -> run -> update step -> uninstall), and on a new version
+# publishes a GitHub Release tagged desktop-vX.Y.Z.
+#
+# Release a new version: bump APP_VERSION in desktop/jacestore/__init__.py, add a "## X.Y.Z"
+# section to desktop/CHANGELOG.md, push to master. A green build releases it automatically.
+name: Desktop app
+
+on:
+  push:
+    branches: [master]
+    paths: ["desktop/**", ".github/workflows/desktop.yml"]
+    tags: ["desktop-v*"]
+  pull_request:
+    paths: ["desktop/**", ".github/workflows/desktop.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: desktop
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(python3 -c "import re;print(re.search(r'APP_VERSION = \"([^\"]+)\"', open('jacestore/__init__.py').read()).group(1))")
+          if [[ "$GITHUB_REF" == refs/tags/desktop-v* ]]; then
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"; echo "publish=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$GITHUB_REF" == refs/heads/master && "$GITHUB_EVENT_NAME" == push ]] && ! gh release view "desktop-v$V" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "New version desktop-v$V: released if every build passes"
+            echo "tag=desktop-v$V" >> "$GITHUB_OUTPUT"; echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "desktop-v$V is already released (or this isn't a push to master): build and test only"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+      - name: Offline install checks
+        run: python tests/selfcheck.py
+      - name: Build .exe
+        run: python packaging/build.py
+      - name: Test the Windows installer, update and uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:JACE_STORE_HOME = "$env:RUNNER_TEMP\jace-store-home"
+          $setup = (Get-ChildItem dist\*.exe)[0].FullName
+          function Run($exe, $argList) {
+            $p = Start-Process -FilePath $exe -ArgumentList $argList -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "$exe $argList exited with $($p.ExitCode)" }
+          }
+          # 1. install from the downloaded .exe
+          Run $setup "--install --yes"
+          $dir = "$env:LOCALAPPDATA\Programs\Jace Store"
+          $exe = "$dir\JaceStore.exe"
+          if (!(Test-Path $exe)) { throw "not installed" }
+          if (!(Test-Path "$dir\_internal")) { throw "_internal missing" }
+          if (!(Test-Path "$dir\_internal\vcruntime140.dll")) { throw "VC++ runtime not bundled" }
+          $sm = [Environment]::GetFolderPath("Programs") + "\Jace Store.lnk"
+          $dt = [Environment]::GetFolderPath("Desktop") + "\Jace Store.lnk"
+          if (!(Test-Path $sm)) { throw "Start menu shortcut missing" }
+          if (!(Test-Path $dt)) { throw "desktop shortcut missing" }
+          $key = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\JaceStore"
+          if (!(Test-Path $key)) { throw "Installed apps entry missing" }
+          $url = (Get-ItemProperty "HKCU:\Software\Classes\jacestore\shell\open\command")."(default)"
+          if ($url -notlike "*JaceStore.exe*") { throw "jacestore:// handler missing: $url" }
+          # 2. the installed copy starts
+          $env:JACE_SELF_TEST_OUT = "$env:RUNNER_TEMP\selftest.txt"
+          Run $exe "--self-test"
+          Get-Content $env:JACE_SELF_TEST_OUT
+          if (-not (Select-String -Path $env:JACE_SELF_TEST_OUT -Pattern "SELF-TEST OK" -Quiet)) { throw "self-test failed" }
+          # 3. update step: the setup .exe installs over the existing copy
+          Run $setup "--apply-update `"$dir`" --no-relaunch"
+          Remove-Item $env:JACE_SELF_TEST_OUT
+          Run $exe "--self-test"
+          if (-not (Select-String -Path $env:JACE_SELF_TEST_OUT -Pattern "SELF-TEST OK" -Quiet)) { throw "self-test after update failed" }
+          # 4. uninstall removes everything
+          Run $exe "--uninstall"
+          Start-Sleep -Seconds 8
+          if (Test-Path $dir) { throw "install folder left behind" }
+          if (Test-Path $sm) { throw "Start menu shortcut left behind" }
+          if (Test-Path $key) { throw "Installed apps entry left behind" }
+          if (Test-Path "HKCU:\Software\Classes\jacestore") { throw "jacestore:// handler left behind" }
+          "WINDOWS INSTALLER OK"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: desktop/dist/*.exe
+
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest       # Apple Silicon
+            arch: arm64
+          - runner: macos-15-intel     # Intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+      - name: Offline install checks
+        run: python tests/selfcheck.py
+      - name: Build .app
+        run: python packaging/build.py
+      - name: Test the Mac installer (install from a downloaded .app, run, uninstall)
+        env:
+          JACE_STORE_HOME: ${{ runner.temp }}/jace-store-home
+        run: |
+          set -x
+          DL="$RUNNER_TEMP/Downloads"; mkdir -p "$DL"
+          ditto -x -k dist/*.app.zip "$DL"
+          xattr -w com.apple.quarantine "0081;$(printf %x $(date +%s));Safari;" "$DL/Jace Store.app"
+          "$DL/Jace Store.app/Contents/MacOS/Jace Store" --install --yes
+          APP="/Applications/Jace Store.app"
+          test -d "$APP"
+          if xattr -r "$APP" | grep -q com.apple.quarantine; then echo "::error::app still quarantined"; exit 1; fi
+          /usr/libexec/PlistBuddy -c "Print CFBundleURLTypes:0:CFBundleURLSchemes:0" "$APP/Contents/Info.plist" | grep -qx jacestore
+          QT_QPA_PLATFORM=offscreen "$APP/Contents/MacOS/Jace Store" --self-test | tee "$RUNNER_TEMP/self.txt"
+          grep -q "SELF-TEST OK" "$RUNNER_TEMP/self.txt"
+          "$APP/Contents/MacOS/Jace Store" --uninstall
+          sleep 5
+          test ! -e "$APP"
+          echo "MAC INSTALLER OK"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-${{ matrix.arch }}
+          path: desktop/dist/*.app.zip
+
+  linux:
+    # older Ubuntu = older glibc = the AppImage runs on more distros
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install system libraries
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-cursor0 libegl1 libxkbcommon-x11-0 desktop-file-utils
+      - name: Create virtualenv
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
+      - name: Offline install checks
+        run: .venv/bin/python tests/selfcheck.py
+      - name: Build AppImage
+        run: ./packaging/build_appimage.sh
+      - name: Test the AppImage (run, install, uninstall)
+        env:
+          QT_QPA_PLATFORM: offscreen
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          JACE_STORE_HOME: ${{ runner.temp }}/jace-store-home
+        run: |
+          set -x
+          A=$(ls dist/JaceStore-*-x86_64.AppImage)
+          "$A" --self-test | tee "$RUNNER_TEMP/self.txt"
+          grep -q "SELF-TEST OK" "$RUNNER_TEMP/self.txt"
+          APPIMAGE="$PWD/$A" "$A" --install --yes
+          test -x "$HOME/Applications/JaceStore.AppImage"
+          grep -q "x-scheme-handler/jacestore" "$HOME/.local/share/applications/io.github.okjace.JaceStore.desktop"
+          desktop-file-validate "$HOME/.local/share/applications/io.github.okjace.JaceStore.desktop"
+          "$HOME/Applications/JaceStore.AppImage" --uninstall
+          test ! -e "$HOME/Applications/JaceStore.AppImage"
+          test ! -e "$HOME/.local/share/applications/io.github.okjace.JaceStore.desktop"
+          # these must come from the user's system, never the bundle
+          "$A" --appimage-extract >/dev/null
+          if find squashfs-root -name 'libstdc++.so.6' -o -name 'libgbm.so.1' -o -name 'libfontconfig.so.1' | grep -q .; then
+            echo "::error::system libraries got bundled"; exit 1
+          fi
+          echo "LINUX APPIMAGE OK"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux
+          path: desktop/dist/*.AppImage
+
+  release:
+    if: needs.version.outputs.publish == 'true'
+    needs: [version, windows, macos, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: actions/checkout@v7
+        with:
+          path: src
+      - name: Release notes from desktop/CHANGELOG.md
+        run: |
+          V="${{ needs.version.outputs.tag }}"; V="${V#desktop-v}"
+          awk -v v="$V" '$0 == "## "v {f=1; next} /^## / {f=0} f' src/desktop/CHANGELOG.md > notes.md
+          printf '\n**Download:** Windows `.exe`, macOS `.app.zip` (Apple Silicon or Intel), Linux `.AppImage`. More at https://jace-store-deb.vercel.app/desktop\n' >> notes.md
+          cat notes.md
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Jace Store desktop ${{ needs.version.outputs.tag }}
+          body_path: notes.md
+          make_latest: true
+          files: artifacts/*
+
+  store:
+    # List the new release on Jace Store itself (as links to the GitHub downloads).
+    # Needs the JACE_STORE_TOKEN repository secret and a project with the slug jace-store-app; skipped otherwise.
+    if: needs.version.outputs.publish == 'true'
+    needs: [version, release]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    env:
+      JACE_STORE_TOKEN: ${{ secrets.JACE_STORE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Publish to Jace Store
+        run: |
+          if [ -z "$JACE_STORE_TOKEN" ]; then echo "::warning::JACE_STORE_TOKEN secret not set - skipping Jace Store"; exit 0; fi
+          if ! node public/jace-store.mjs project jace-store-app --json >/dev/null 2>&1; then
+            echo "::warning::No jace-store-app project on Jace Store yet - create it to list the desktop app there"; exit 0
+          fi
+          TAG="${{ needs.version.outputs.tag }}"; V="${TAG#desktop-v}"
+          BASE="https://github.com/${{ github.repository }}/releases/download/$TAG"
+          awk -v v="$V" '$0 == "## "v {f=1; next} /^## / {f=0} f' desktop/CHANGELOG.md > changelog.md
+          node public/jace-store.mjs publish jace-store-app --version "$V" --name "Jace Store $V" --loaders windows,macos,linux \
+            --changelog-file changelog.md \
+            --link "$BASE/JaceStore-$V-windows-x64.exe|Windows" \
+            --link "$BASE/JaceStore-$V-macos-arm64.app.zip|macOS (Apple Silicon)" \
+            --link "$BASE/JaceStore-$V-macos-x86_64.app.zip|macOS (Intel)" \
+            --link "$BASE/JaceStore-$V-x86_64.AppImage|Linux"

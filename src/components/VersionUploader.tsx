@@ -7,6 +7,7 @@ import { detectMeta, hashFile, safeFilename, uploadToBucket } from "@/lib/upload
 import type { Project } from "@/lib/types";
 import type { Dependency } from "@/lib/dependencyTypes";
 import DependencyPicker, { cleanDeps } from "./DependencyPicker";
+import { DESKTOP_TYPES, INSTALL_MODES, type InstallMode } from "@/lib/fileFormats";
 
 const MAX_BYTES = 500 * 1024 * 1024;
 
@@ -24,6 +25,8 @@ export default function VersionUploader({ project, userId }: { project: Project;
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const desktop = (DESKTOP_TYPES as readonly string[]).includes(project.type);
+  const [installMode, setInstallMode] = useState<InstallMode>("auto");
   const [links, setLinks] = useState<{ url: string; label: string; filename: string }[]>([]);
   const setLink = (i: number, patch: Partial<(typeof links)[number]>) =>
     setLinks(links.map((l, j) => (j === i ? { ...l, ...patch } : l)));
@@ -66,7 +69,7 @@ export default function VersionUploader({ project, userId }: { project: Project;
         const path = `${userId}/${project.id}/${vid}/${safeFilename(f.name)}`;
         const url = await uploadToBucket(supabase, "project-files", path, f);
         uploadedPaths.push(path);
-        fileRows.push({ version_id: vid, filename: f.name, storage_path: path, url, size: f.size, sha1, sha512, is_primary: i === 0 });
+        fileRows.push({ version_id: vid, filename: f.name, storage_path: path, url, size: f.size, sha1, sha512, is_primary: i === 0, ...(desktop ? { install_mode: installMode } : {}) });
       }
       setStatus("Saving version…");
       const { error: vErr } = await supabase.from("versions").insert({
@@ -106,6 +109,7 @@ export default function VersionUploader({ project, userId }: { project: Project;
             label: l.label.trim() || undefined,
             filename: l.filename.trim() || undefined,
             primary: !fileRows.length && i === 0,
+            ...(desktop ? { install_mode: installMode } : {}),
           }),
         });
         const out = await res.json().catch(() => ({}));
@@ -166,6 +170,25 @@ export default function VersionUploader({ project, userId }: { project: Project;
           ))}
         </div>
       </div>
+
+      {desktop && (
+        <div>
+          <span className="label">In the Jace Store app</span>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {INSTALL_MODES.map((m) => (
+              <label key={m.id} className={`cursor-pointer rounded-lg border p-3 text-sm ${installMode === m.id ? "border-brand bg-brand/10" : "border-line bg-panel-2 hover:border-muted"}`}>
+                <input type="radio" name="install-mode" className="sr-only" checked={installMode === m.id} onChange={() => setInstallMode(m.id)} />
+                <b>{m.label}</b>
+                <span className="mt-1 block text-xs text-muted">{m.hint}</span>
+              </label>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            Applies to every file in this version. The app picks the right file for each computer from the file type and name
+            (e.g. <code>.deb</code> for Ubuntu, <code>.msi</code> for Windows, <code>-arm64</code> for Apple Silicon). Fine-tune it per file under Versions.
+          </p>
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <div>

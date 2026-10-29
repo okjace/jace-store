@@ -19,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="flex flex-wrap justify-center gap-4">
             <Link href="/browse" className="hover:text-text">Browse everything</Link>
             <Link href="/launchers" className="hover:text-text">Minecraft launchers</Link>
+            <Link href="/desktop" className="hover:text-text">Desktop app</Link>
             <Link href="/developers/launchers" className="hover:text-text">Launcher API</Link>
             <Link href="/pack" className="hover:text-text">Pack builder</Link>
           </div>

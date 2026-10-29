@@ -9,6 +9,7 @@ import InstallPanel from "@/components/InstallPanel";
 import AddToPackButton from "@/components/AddToPackButton";
 import DownloadButton, { type DlVersion } from "@/components/DownloadButton";
 import ReportButton from "@/components/ReportButton";
+import { DESKTOP_TYPES } from "@/lib/fileFormats";
 import { dependencyUrl, type Dependency } from "@/lib/dependencyTypes";
 
 const PACKABLE = ["mod", "resourcepack", "shader"];
@@ -85,6 +86,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
         </div>
         <div className="flex flex-wrap gap-2">
           {(featuredFile || (mode === "all" && versions.length > 0)) && download("btn-primary px-6! py-2.5! text-base")}
+          {(DESKTOP_TYPES as readonly string[]).includes(project.type) && versions.length > 0 && (
+            <a href={`jacestore://project/${project.slug}`} className="btn-ghost" title="Opens the Jace Store desktop app (get it at /desktop)">
+              Open in Jace Store app
+            </a>
+          )}
           {isOwner && (
             <Link href={`/project/${project.slug}/edit`} className="btn-ghost">Manage project</Link>
           )}
