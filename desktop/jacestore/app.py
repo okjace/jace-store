@@ -107,6 +107,8 @@ def _cli(argv) -> int | None:
 
 def _close_splash():
     """The Windows setup .exe shows a splash while it unpacks; hide it once we're running."""
+    if sys.platform != "win32":
+        return
     try:
         import pyi_splash  # only exists in the onefile Windows build
         pyi_splash.close()

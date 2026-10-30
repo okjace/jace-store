@@ -1,5 +1,10 @@
 # Jace Store desktop: changelog
 
+## 1.2.1
+- Linux: opens on Wayland desktops that have AppImageLauncher installed (it crashed before Jace Store
+  started). Menu entries for Jace Store and for AppImages it installs now skip AppImageLauncher;
+  existing entries are fixed the next time Jace Store starts.
+
 ## 1.2.0
 - Cancel installs: Cancel stops the running download, installer or package manager, and Cancel all
   also clears the queue. (System package installs that already asked for your password finish first.)

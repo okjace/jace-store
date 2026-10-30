@@ -90,7 +90,7 @@ else:
     check("zip: one folder level flattened", launch.parent.name == "Hello", launch)
     if sys.platform != "win32":
         check("zip: executable bit kept", os.access(launch, os.X_OK))
-        check("zip: menu entry written", Path(rec["desktop_file"]).exists() and f'Exec="{launch}"' in Path(rec["desktop_file"]).read_text())
+        check("zip: menu entry written", Path(rec["desktop_file"]).exists() and f'"{launch}"' in Path(rec["desktop_file"]).read_text())
     else:
         check("zip: Start menu shortcut", any(p.endswith(".lnk") and Path(p).exists() for p in rec["paths"]), rec)
     installer.uninstall(rec, log=lambda *_: None)
@@ -127,6 +127,7 @@ if sys.platform.startswith("linux"):
     rec = installer.install_file(a, "appimage", slug="thing", title="Thing", log=lambda *_: None)
     check("appimage: moved to Applications", Path(rec["launch"]).name == "Thing.AppImage" and os.access(rec["launch"], os.X_OK), rec)
     check("appimage: menu entry", Path(rec["desktop_file"]).exists())
+    check("appimage: menu entry skips AppImageLauncher", "Exec=env APPIMAGELAUNCHER_DISABLE=1 " in Path(rec["desktop_file"]).read_text())
     installer.uninstall(rec, log=lambda *_: None)
     check("appimage: removed", not Path(rec["launch"]).exists() and not Path(rec["desktop_file"]).exists())
 

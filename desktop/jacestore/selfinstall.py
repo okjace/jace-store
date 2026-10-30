@@ -223,7 +223,9 @@ def _desktop_entry(exe: Path) -> str:
     return "\n".join([
         "[Desktop Entry]", "Type=Application", f"Name={APP_NAME}", "GenericName=App Store",
         "Comment=Install apps and games from Jace Store, Flathub and your distro",
-        f'Exec="{exe}" %U', f"Icon={APP_ID}", "Terminal=false", "Categories=System;PackageManager;",
+        # AppImageLauncher (a Qt5 program some distros ship) runs before every AppImage and aborts on
+        # Wayland desktops without qt5-wayland, so the app never opens: tell it to step aside
+        f'Exec=env APPIMAGELAUNCHER_DISABLE=1 "{exe}" %U', f"Icon={APP_ID}", "Terminal=false", "Categories=System;PackageManager;",
         "Keywords=store;apps;install;software;flatpak;packages;",
         f"MimeType=x-scheme-handler/{URL_SCHEME};{';'.join(FLATPAK_MIMES)};",
         f"StartupWMClass={APP_NAME}", "",

@@ -212,7 +212,8 @@ def write_desktop_entry(slug: str, title: str, exec_path: Path, icon: str | None
     ex = str(exec_path).replace('"', '\\"')
     f.write_text("\n".join([
         "[Desktop Entry]", "Type=Application", f"Name={title}", f"Comment={comment}".rstrip(),
-        f'Exec="{ex}" %U', f"Path={exec_path.parent}", f"Icon={icon or 'application-x-executable'}",
+        # (env APPIMAGELAUNCHER_DISABLE=1: see selfinstall._desktop_entry)
+        f'Exec=env APPIMAGELAUNCHER_DISABLE=1 "{ex}" %U', f"Path={exec_path.parent}", f"Icon={icon or 'application-x-executable'}",
         "Terminal=false", "Categories=Utility;", "X-JaceStore=true", "",
     ]), encoding="utf-8")
     f.chmod(0o755)
