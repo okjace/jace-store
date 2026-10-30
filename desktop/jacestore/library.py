@@ -226,3 +226,156 @@ def import_system(entries: list[dict]) -> int:
         add(e["name"], e["target"], e["kind"], e.get("icon"), "", e.get("notes", ""), "system", e["system_id"])
         added += 1
     return added
+
+
+# --- uninstalling the program itself -------------------------------------------------------------------------
+
+def _owner_package(path: str) -> tuple[str, str] | None:
+    """(package manager, package) that owns a file, e.g. ("pacman", "firefox")."""
+    from jacestore.system import detect
+    pm = detect().package_manager
+    try:
+        if pm == "pacman":
+            r = subprocess.run(["pacman", "-Qoq", path], capture_output=True, text=True, env=child_env())
+        elif pm == "apt":
+            r = subprocess.run(["dpkg-query", "-S", path], capture_output=True, text=True, env=child_env())
+            if r.returncode == 0:
+                return ("apt", r.stdout.split(":", 1)[0].split(",")[0].strip())
+            return None
+        elif pm in ("dnf", "zypper"):
+            r = subprocess.run(["rpm", "-qf", "--qf", "%{NAME}", path], capture_output=True, text=True, env=child_env())
+        else:
+            return None
+    except FileNotFoundError:
+        return None
+    name = r.stdout.strip().splitlines()[0] if r.returncode == 0 and r.stdout.strip() else ""
+    return (pm, name) if name else None
+
+
+def _lnk_target(lnk: str) -> str:
+    q = lnk.replace("'", "''")
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", f"(New-Object -ComObject WScript.Shell).CreateShortcut('{q}').TargetPath"],
+                       capture_output=True, text=True, creationflags=0x08000000)
+    return r.stdout.strip()
+
+
+def _windows_uninstaller(name: str, target: str) -> dict | None:
+    """The 'Installed apps' entry for a program: matched by install folder, then by name."""
+    import winreg
+    keys = [(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
+            (winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
+            (winreg.HKEY_LOCAL_MACHINE, r"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall")]
+    entries = []
+    for hive, path in keys:
+        try:
+            root = winreg.OpenKey(hive, path)
+        except OSError:
+            continue
+        for i in range(winreg.QueryInfoKey(root)[0]):
+            try:
+                with winreg.OpenKey(root, winreg.EnumKey(root, i)) as k:
+                    vals = {}
+                    for v in ("DisplayName", "UninstallString", "QuietUninstallString", "InstallLocation", "DisplayIcon"):
+                        try:
+                            vals[v] = str(winreg.QueryValueEx(k, v)[0])
+                        except OSError:
+                            pass
+                    if vals.get("DisplayName") and vals.get("UninstallString"):
+                        entries.append(vals)
+            except OSError:
+                continue
+    tdir = os.path.normcase(os.path.dirname(target)) if target else ""
+    for e in entries:
+        loc = os.path.normcase(e.get("InstallLocation", "").strip('"').rstrip("\\"))
+        icon = os.path.normcase(e.get("DisplayIcon", "").split(",")[0].strip('"'))
+        if tdir and ((loc and tdir.startswith(loc)) or (icon and os.path.dirname(icon) == tdir)):
+            return e
+    n = name.lower()
+    return next((e for e in entries if e["DisplayName"].lower() == n), None) or \
+        next((e for e in entries if n and (n in e["DisplayName"].lower() or e["DisplayName"].lower() in n)), None)
+
+
+def uninstall_plan(app: dict) -> dict | None:
+    """How to remove this program from the computer, or None if Jace Store can't tell.
+    -> {"method": ..., "what": human description, ...details}"""
+    kind, target = app.get("kind"), app.get("target", "")
+    if kind == "url":
+        return None
+    if sys.platform.startswith("linux"):
+        exe = []
+        if kind == "desktop":
+            exe = desktop_exec(target) or []
+            if "/flatpak/exports/" in target:
+                app_id = Path(target).stem
+                user = str(Path.home()) in target
+                return {"method": "flatpak", "id": app_id, "user": user, "what": f"the Flatpak {app_id}"}
+            if "/snapd/desktop/" in target or (exe and exe[0].startswith("/snap/bin/")):
+                snap = (exe[0].rsplit("/", 1)[-1] if exe and exe[0].startswith("/snap/bin/") else Path(target).stem.split("_")[0]).split(".")[0]
+                return {"method": "snap", "id": snap, "what": f"the Snap {snap}"}
+        else:
+            exe = [target]
+        appimage = next((x for x in exe if x.lower().endswith(".appimage") and os.path.exists(x)), None)
+        from jacestore import selfinstall
+        me = selfinstall.installed_path() or selfinstall.running_package()
+        if appimage and me and os.path.realpath(appimage) == os.path.realpath(str(me)):
+            return {"method": "self", "what": "Jace Store itself"}
+        if appimage:
+            return {"method": "files", "files": [appimage] + ([target] if kind == "desktop" else []),
+                    "what": f"the AppImage {Path(appimage).name} and its menu entry"}
+        for path in [target if kind == "desktop" else None, *(exe[:1])]:
+            if path and os.path.isabs(path):
+                owner = _owner_package(path) or _owner_package(which(path) or path)
+                if owner:
+                    return {"method": "package", "manager": owner[0], "id": owner[1], "what": f"the {owner[0]} package {owner[1]}"}
+        if kind == "desktop" and target.startswith(str(Path.home())):
+            return {"method": "files", "files": [target], "what": "its menu entry (Jace Store couldn't find what installed the program)",
+                    "partial": True}
+        return None
+    if sys.platform == "darwin":
+        if kind == "app" and target.endswith(".app") and not target.startswith("/System/"):
+            return {"method": "trash", "files": [target], "what": f"{Path(target).name} (moved to the Trash)"}
+        return None
+    if sys.platform == "win32":
+        exe = _lnk_target(target) if kind == "shortcut" else target
+        e = _windows_uninstaller(app.get("name", ""), exe)
+        if e:
+            return {"method": "windows", "command": e.get("UninstallString"), "name": e["DisplayName"],
+                    "what": f"{e['DisplayName']} (its own uninstaller opens)"}
+        return None
+    return None
+
+
+def uninstall_app(app: dict, plan: dict, log=print):
+    """Remove the program from the computer, then from My apps."""
+    from jacestore.installer import elevated, run
+    m = plan["method"]
+    if m == "flatpak":
+        run(["flatpak", "uninstall", "-y", "--noninteractive", "--user" if plan.get("user") else "--system", plan["id"]], log)
+    elif m == "snap":
+        run(elevated(["snap", "remove", plan["id"]]), log)
+    elif m == "package":
+        cmd = {"pacman": ["pacman", "-R", "--noconfirm", plan["id"]], "apt": ["apt-get", "remove", "-y", plan["id"]],
+               "dnf": ["dnf", "remove", "-y", plan["id"]], "zypper": ["zypper", "--non-interactive", "remove", plan["id"]]}[plan["manager"]]
+        log("Asking for your password to remove a system package…")
+        run(elevated(cmd), log)
+    elif m == "files":
+        for f in plan["files"]:
+            Path(f).unlink(missing_ok=True)
+            log(f"Deleted {f}")
+    elif m == "trash":
+        src = Path(plan["files"][0])
+        trash = Path.home() / ".Trash"
+        trash.mkdir(exist_ok=True)
+        dest = trash / src.name
+        n = 2
+        while dest.exists():
+            dest = trash / f"{src.stem} {n}{src.suffix}"
+            n += 1
+        shutil.move(str(src), str(dest))
+        log(f"Moved {src.name} to the Trash")
+    elif m == "windows":
+        # the program's own uninstaller (it may ask for administrator permission and show its own window)
+        subprocess.Popen(plan["command"], shell=True)  # noqa: S602 - the registry's UninstallString is a command line
+        log(f"Opened {plan['name']}'s uninstaller")
+        return
+    remove(app["id"])

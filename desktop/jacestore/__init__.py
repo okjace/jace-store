@@ -3,7 +3,7 @@ software sources your OS already uses (winget, Homebrew, Flathub, Snap, apt,
 dnf, pacman, zypper, the AUR)."""
 
 APP_NAME = "Jace Store"
-APP_VERSION = "1.2.3"
+APP_VERSION = "1.2.4"
 APP_ID = "io.github.okjace.JaceStore"
 AUTHOR = "Jace"
 STORE_URL = "https://jace-store-deb.vercel.app"

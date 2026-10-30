@@ -1,5 +1,11 @@
 # Jace Store desktop: changelog
 
+## 1.2.4
+- My apps: "Uninstall from this computer" removes the program itself, not just its place in the list.
+  Jace Store works out what installed it: on Linux a Flatpak, Snap, distro package (pacman, apt, dnf,
+  zypper) or AppImage; on macOS the app goes to the Trash; on Windows the program's own uninstaller
+  opens. It always says exactly what will be removed and asks first.
+
 ## 1.2.3
 - My apps: delete apps more easily: a ⋯ menu on every app (Edit, Change logo, Delete), a Delete button
   in the edit window, and "Delete the ones added from this computer" to undo "Add all apps on this

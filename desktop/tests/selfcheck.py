@@ -203,6 +203,26 @@ print(f"     found {len(found)} apps on this computer")
 n = library.import_system(found[:3])
 check("add scanned apps (no duplicates on a second run)", library.import_system(found[:3]) == 0 and n == len(found[:3]))
 
+if sys.platform.startswith("linux"):
+    # uninstalling a program from My apps: an AppImage with a menu entry (in the test folders)
+    fake = TMP / "apps" / "Fake.AppImage"
+    fake.parent.mkdir(parents=True, exist_ok=True)
+    fake.write_bytes(b"#!/bin/sh\n")
+    fake.chmod(0o755)
+    entry = Path(os.environ["XDG_DATA_HOME"]) / "applications" / "fake-test.desktop"
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    entry.write_text(f"[Desktop Entry]\nType=Application\nName=Fake Test App\nExec=env APPIMAGELAUNCHER_DISABLE=1 \"{fake}\" %U\n")
+    found_fake = [x for x in library.scan_system() if x["name"] == "Fake Test App"]
+    check("scan finds an AppImage's menu entry", len(found_fake) == 1, found_fake)
+    library.import_system(found_fake)
+    lib_fake = next(x for x in library.load() if x["name"] == "Fake Test App")
+    plan = library.uninstall_plan(lib_fake)
+    check("uninstall plan for an AppImage", plan and plan["method"] == "files" and str(fake) in plan["files"], plan)
+    library.uninstall_app(lib_fake, plan, log=lambda *_: None)
+    check("uninstall removes the AppImage, its entry and the library item",
+          not fake.exists() and not entry.exists() and not any(x["id"] == lib_fake["id"] for x in library.load()))
+    check("websites can't be uninstalled", library.uninstall_plan({"kind": "url", "target": "https://x"}) is None)
+
 # --- cancelling ------------------------------------------------------------------------------------------------
 import threading  # noqa: E402
 tok = cancel.Token()

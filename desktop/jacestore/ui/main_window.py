@@ -1168,6 +1168,8 @@ class AppTile(QFrame):
             m.addAction("Website", lambda: webbrowser.open(self.app["website"]))
         m.addSeparator()
         m.addAction("Delete from My apps", lambda: self.page.remove(self.app))
+        if self.app.get("kind") != "url":
+            m.addAction("Uninstall from this computer…", lambda: self.page.uninstall(self.app))
         m.exec(pos)
 
 
@@ -1239,6 +1241,32 @@ class MyAppsPage(Page):
                                 "This only removes it from your list (and its custom logo); the program itself isn't uninstalled.") == QMessageBox.Yes:
             library.remove(app["id"])
             self._render()
+
+    def uninstall(self, app):
+        """Remove the program itself (package, Flatpak, Snap, AppImage, .app, or its own uninstaller)."""
+        self.status.setText(f"Working out how {app['name']} was installed…")
+
+        def go(plan):
+            self.status.setText("")
+            if not plan:
+                QMessageBox.information(self, APP_NAME, f"Jace Store can't tell how {app['name']} was installed, so it can't uninstall it. "
+                                        "Remove it with the tool you installed it with (or Delete it from My apps to just hide it here).")
+                return
+            if plan["method"] == "self":
+                QMessageBox.information(self, APP_NAME, "To remove Jace Store itself, use Settings → Remove Jace Store from this computer.")
+                return
+            extra = ""
+            if plan["method"] in ("package", "snap"):
+                extra = "\n\nIt asks for your password. If other software needs this package, it won't be removed."
+            elif plan["method"] == "windows":
+                extra = "\n\nThe program's own uninstaller opens; follow its steps."
+            elif plan.get("partial"):
+                extra = "\n\nOnly the menu entry is removed. The program's files may still be on your computer."
+            if QMessageBox.question(self, APP_NAME, f"Uninstall {app['name']}?\n\nThis removes {plan['what']} from this computer.{extra}") != QMessageBox.Yes:
+                return
+            self.win.jobs.add(f"library:{app['id']}", f"Uninstalling {app['name']}",
+                              lambda log, progress: library.uninstall_app(app, plan, log), lambda res, err: self._render())
+        run_async(lambda ctx: library.uninstall_plan(app), go, lambda e: self.status.setText(f"Couldn't check: {e}"))
 
     def remove_scanned(self):
         scanned = [a for a in library.load() if a.get("origin") == "system"]
