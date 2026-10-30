@@ -1,5 +1,10 @@
 # Jace Store desktop: changelog
 
+## 1.2.2
+- Install buttons no longer stay on "Working…" after an install finishes (every source, not only the AUR).
+- AUR: packages built in a terminal window only count as installed once pacman has them; if the build
+  was closed or failed, the button offers Install again.
+
 ## 1.2.1
 - Linux: opens on Wayland desktops that have AppImageLauncher installed (it crashed before Jace Store
   started). Menu entries for Jace Store and for AppImages it installs now skip AppImageLauncher;

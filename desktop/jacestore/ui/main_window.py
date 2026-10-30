@@ -183,6 +183,7 @@ class JobPanel(QFrame):
                 self.bar.setValue(int(done * 1000 / total))
 
         def done(result):
+            self.current = None           # finished: buttons that refresh below must not see it as running
             if result is CANCELLED:
                 self.bar.setRange(0, 1)
                 self.bar.setValue(0)
@@ -200,6 +201,7 @@ class JobPanel(QFrame):
             self._next()
 
         def failed(msg):
+            self.current = None
             self.bar.setRange(0, 1)
             self.bar.setValue(0)
             self.title.setText(f"✗ {title}: failed")
@@ -348,6 +350,17 @@ class PackageRow(QFrame):
     def refresh(self):
         rec = installed.get(self.pkg.source, self.pkg.id)
         key = f"{self.pkg.source}:{self.pkg.id}"
+        if rec and rec.get("pending") and not self.win.jobs.busy(key):
+            # finished in a terminal window: installed only if the build actually succeeded
+            src = sources.by_id(self.pkg.source)
+            really = src.installed_check(self.pkg.id) if src else None
+            if really is False:
+                self.btn.setText("Install")
+                self.btn.setToolTip("The last install was opened in a terminal and didn't finish. Try again.")
+                self.btn.setEnabled(True)
+                return
+            if really:
+                installed.put(self.pkg.source, self.pkg.id, {**{k: v for k, v in rec.items() if k not in ("pending", "installed_at")}})
         if self.win.jobs.busy(key):
             self.btn.setText("Working…")
             self.btn.setEnabled(False)
@@ -364,6 +377,10 @@ class PackageRow(QFrame):
 
     def _click(self):
         rec = installed.get(self.pkg.source, self.pkg.id)
+        if rec and rec.get("pending"):
+            src = sources.by_id(self.pkg.source)
+            if src and src.installed_check(self.pkg.id) is False:
+                rec = None                      # the terminal install didn't finish: install again
         if rec:
             self.win.uninstall(rec, after=self.refresh)
         else:

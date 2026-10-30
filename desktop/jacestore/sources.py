@@ -103,6 +103,10 @@ class Source:
     def launch_target(self, pkg: Package) -> str | None:
         return None
 
+    def installed_check(self, pkg_id: str) -> bool | None:
+        """Is it really installed? None = can't tell (trust Jace Store's own record)."""
+        return None
+
     def record(self, pkg: Package, rec: dict):
         installed.put(self.id, pkg.id, {"title": pkg.name, "summary": pkg.summary, "icon_url": pkg.icon_url,
                                         "version_number": pkg.version, "kind": "source", **rec})
@@ -391,6 +395,11 @@ class AUR(Source):
 
     def uninstall(self, pkg_id, log=print):
         run(elevated(["pacman", "-R", "--noconfirm", pkg_id]), log)
+
+    def installed_check(self, pkg_id):
+        # AUR builds finish in a terminal window, so ask pacman whether it really got installed
+        r = subprocess.run(["pacman", "-Qq", pkg_id], capture_output=True, env=child_env())
+        return r.returncode == 0
 
 
 # --- winget (Windows) -----------------------------------------------------------------------------------
