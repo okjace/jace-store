@@ -4,6 +4,8 @@
 - Linux: opens on Wayland desktops that have AppImageLauncher installed (it crashed before Jace Store
   started). Menu entries for Jace Store and for AppImages it installs now skip AppImageLauncher;
   existing entries are fixed the next time Jace Store starts.
+- Linux: your desktop's theme and native file dialogs load again on newer distros (an old bundled
+  libmount clashed with the system's GLib).
 
 ## 1.2.0
 - Cancel installs: Cancel stops the running download, installer or package manager, and Cancel all

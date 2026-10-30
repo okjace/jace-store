@@ -40,7 +40,10 @@ if [ -n "$XCBC" ] && [ -n "$QTLIB" ]; then cp -L "$XCBC" "$QTLIB/libxcb-cursor.s
 
 # Libraries that must come from the user's system (they have to match its graphics drivers / config)
 for lib in libstdc++.so.6 libgcc_s.so.1 libgbm.so.1 libfontconfig.so.1 libfreetype.so.6 libexpat.so.1 \
-           libglib-2.0.so.0 libgio-2.0.so.0 libgobject-2.0.so.0 libgmodule-2.0.so.0 libdbus-1.so.3; do
+           libglib-2.0.so.0 libgio-2.0.so.0 libgobject-2.0.so.0 libgmodule-2.0.so.0 libdbus-1.so.3 \
+           libmount.so.1 libblkid.so.1 libselinux.so.1 libpcre2-8.so.0 libffi.so.8; do
+  # (an old bundled libmount breaks the system's GLib: "version MOUNT_2_40 not found", so the GTK theme
+  # plugin, i.e. native file dialogs and desktop look, failed to load on newer distros)
   find "$BUILD/dist/jace-store" -name "$lib" -delete
 done
 

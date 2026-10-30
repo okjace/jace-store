@@ -205,7 +205,7 @@ jobs:
           test ! -e "$HOME/.local/share/applications/io.github.okjace.JaceStore.desktop"
           # these must come from the user's system, never the bundle
           "$A" --appimage-extract >/dev/null
-          if find squashfs-root -name 'libstdc++.so.6' -o -name 'libgbm.so.1' -o -name 'libfontconfig.so.1' | grep -q .; then
+          if find squashfs-root -name 'libstdc++.so.6' -o -name 'libgbm.so.1' -o -name 'libfontconfig.so.1' -o -name 'libmount.so.1' | grep -q .; then
             echo "::error::system libraries got bundled"; exit 1
           fi
           echo "LINUX APPIMAGE OK"
