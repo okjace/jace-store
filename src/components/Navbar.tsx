@@ -19,7 +19,8 @@ export default async function Navbar() {
     <header className="sticky top-0 z-30 border-b border-line bg-bg/85 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3">
         <Link href="/" className="flex items-center gap-2 text-lg font-extrabold">
-          <span className="grid h-8 w-8 place-items-center rounded-md bg-brand text-black">J</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="" width={32} height={32} className="h-8 w-8" />
           <span className="hidden sm:inline">{SITE_NAME}</span>
         </Link>
         <nav className="hidden flex-1 items-center gap-1 text-sm md:flex">
