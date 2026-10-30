@@ -1062,6 +1062,11 @@ class AppDialog(QDialog):
             lay.addWidget(w)
         lay.addWidget(label("Only on this computer. Apps you add here are never uploaded or shown to anyone.", muted=True, wrap=True))
         row = QHBoxLayout()
+        self.deleted = False
+        if app:
+            delete = button("Delete", danger=True)
+            delete.clicked.connect(self._delete)
+            row.addWidget(delete)
         row.addStretch()
         cancel_b = button("Cancel")
         cancel_b.clicked.connect(self.reject)
@@ -1070,6 +1075,13 @@ class AppDialog(QDialog):
         row.addWidget(cancel_b)
         row.addWidget(ok)
         lay.addLayout(row)
+
+    def _delete(self):
+        if QMessageBox.question(self, APP_NAME, f"Delete {self.app['name']} from My apps?\n\n"
+                                "This only removes it from your list (and its custom logo); the program itself isn't uninstalled.") == QMessageBox.Yes:
+            library.remove(self.app["id"])
+            self.deleted = True
+            self.accept()
 
     def _pick_logo(self):
         f, _ = QFileDialog.getOpenFileName(self, "Choose a logo", str(Path.home() / "Pictures"), "Pictures (*.png *.jpg *.jpeg *.webp *.svg *.ico *.bmp)")
@@ -1120,7 +1132,15 @@ class AppTile(QFrame):
         self.setFixedSize(150, 150)
         self.setToolTip((app.get("notes") or app["name"]) + "\n\nClick to open · right-click for more")
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(10, 14, 10, 10)
+        lay.setContentsMargins(10, 4, 4, 10)
+        more = QPushButton("⋯")
+        more.setCursor(Qt.PointingHandCursor)
+        more.setFixedSize(28, 22)
+        more.setToolTip("Edit, change logo or delete")
+        more.setStyleSheet("QPushButton { border: none; background: transparent; color: #8b93a3; font-size: 14pt; padding: 0; }"
+                           "QPushButton:hover { color: #e6e8ec; }")
+        more.clicked.connect(lambda: self._menu(more.mapToGlobal(more.rect().bottomLeft())))
+        lay.addWidget(more, 0, Qt.AlignRight)
         ic = QLabel()
         ic.setFixedSize(64, 64)
         ic.setPixmap(app_pixmap(app, 64))
@@ -1137,6 +1157,9 @@ class AppTile(QFrame):
             self.page.open_app(self.app)
 
     def contextMenuEvent(self, e):
+        self._menu(e.globalPos())
+
+    def _menu(self, pos):
         m = QMenu(self)
         m.addAction("Open", lambda: self.page.open_app(self.app))
         m.addAction("Edit…", lambda: self.page.edit(self.app))
@@ -1144,8 +1167,8 @@ class AppTile(QFrame):
         if self.app.get("website"):
             m.addAction("Website", lambda: webbrowser.open(self.app["website"]))
         m.addSeparator()
-        m.addAction("Remove from My apps", lambda: self.page.remove(self.app))
-        m.exec(e.globalPos())
+        m.addAction("Delete from My apps", lambda: self.page.remove(self.app))
+        m.exec(pos)
 
 
 class MyAppsPage(Page):
@@ -1165,9 +1188,13 @@ class MyAppsPage(Page):
         add.clicked.connect(lambda: self.win.add_to_library())
         scan = button("Add all apps on this computer")
         scan.clicked.connect(self.scan)
+        self.clear_scanned = button("Delete the ones added from this computer")
+        self.clear_scanned.setToolTip("Removes every app that \"Add all apps on this computer\" added (your own stay)")
+        self.clear_scanned.clicked.connect(self.remove_scanned)
         bar.addWidget(self.filter, 1)
         bar.addWidget(add)
         bar.addWidget(scan)
+        bar.addWidget(self.clear_scanned)
         self.body.addLayout(bar)
         self.status = label("", muted=True)
         self.body.addWidget(self.status)
@@ -1187,6 +1214,7 @@ class MyAppsPage(Page):
         shown = [a for a in apps if not f or f in a["name"].lower() or f in (a.get("notes") or "").lower()]
         self.status.setText(f"{len(apps)} apps" + (f", {len(shown)} shown" if f else "") if apps
                             else "Nothing here yet: add an app, or let Jace Store add every app on this computer.")
+        self.clear_scanned.setVisible(any(a.get("origin") == "system" for a in apps))
         for a in shown:
             self.flow.addWidget(AppTile(a, self))
 
@@ -1197,8 +1225,8 @@ class MyAppsPage(Page):
             QMessageBox.warning(self, APP_NAME, f"Couldn't open {app['name']}: {e}")
 
     def edit(self, app):
-        if AppDialog(self, app).exec():
-            self._render()
+        AppDialog(self, app).exec()
+        self._render()
 
     def change_logo(self, app):
         f, _ = QFileDialog.getOpenFileName(self, "Choose a logo", str(Path.home() / "Pictures"), "Pictures (*.png *.jpg *.jpeg *.webp *.svg *.ico *.bmp)")
@@ -1207,9 +1235,19 @@ class MyAppsPage(Page):
             self._render()
 
     def remove(self, app):
-        if QMessageBox.question(self, APP_NAME, f"Remove {app['name']} from My apps?\n\nThis doesn't uninstall it.") == QMessageBox.Yes:
+        if QMessageBox.question(self, APP_NAME, f"Delete {app['name']} from My apps?\n\n"
+                                "This only removes it from your list (and its custom logo); the program itself isn't uninstalled.") == QMessageBox.Yes:
             library.remove(app["id"])
             self._render()
+
+    def remove_scanned(self):
+        scanned = [a for a in library.load() if a.get("origin") == "system"]
+        if QMessageBox.question(self, APP_NAME, f"Delete the {len(scanned)} apps that were added from this computer?\n\n"
+                                "Apps you added yourself stay. Nothing gets uninstalled.") != QMessageBox.Yes:
+            return
+        for a in scanned:
+            library.remove(a["id"])
+        self._render()
 
     def scan(self):
         self.status.setText("Looking for apps on this computer…")

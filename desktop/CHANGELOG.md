@@ -1,5 +1,10 @@
 # Jace Store desktop: changelog
 
+## 1.2.3
+- My apps: delete apps more easily: a ⋯ menu on every app (Edit, Change logo, Delete), a Delete button
+  in the edit window, and "Delete the ones added from this computer" to undo "Add all apps on this
+  computer" in one go (apps you added yourself stay). Deleting never uninstalls the program.
+
 ## 1.2.2
 - Install buttons no longer stay on "Working…" after an install finishes (every source, not only the AUR).
 - AUR: packages built in a terminal window only count as installed once pacman has them; if the build
