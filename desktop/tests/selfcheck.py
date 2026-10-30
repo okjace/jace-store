@@ -223,6 +223,27 @@ if sys.platform.startswith("linux"):
           not fake.exists() and not entry.exists() and not any(x["id"] == lib_fake["id"] for x in library.load()))
     check("websites can't be uninstalled", library.uninstall_plan({"kind": "url", "target": "https://x"}) is None)
 
+# --- apps Jace Store installs show up in My apps -------------------------------------------------------------
+folder = TMP / "apps" / "Synced App"
+folder.mkdir(parents=True, exist_ok=True)
+(folder / "run").write_bytes(b"x")
+installed.put("jacestore", "proj-123", {"title": "Synced App", "slug": "synced-app", "project_id": "proj-123", "version_id": "v1",
+                                        "kind": "folder", "paths": [str(folder)], "icon_url": None})
+installed.put("flathub", "org.example.Thing", {"title": "Flat Thing", "kind": "source", "launch_kind": "flatpak", "launch": "org.example.Thing"})
+library.sync_installed()
+lib = {a_["name"]: a_ for a_ in library.load()}
+check("installed apps appear in My apps", "Synced App" in lib and "Flat Thing" in lib and lib["Synced App"]["kind"] == "installed", list(lib))
+library.sync_installed()
+check("syncing twice doesn't duplicate", sum(1 for a_ in library.load() if a_["name"] == "Synced App") == 1)
+plan = library.uninstall_plan(lib["Synced App"])
+check("installed app has an uninstall plan", plan and plan["method"] == "installed", plan)
+library.uninstall_app(lib["Synced App"], plan, log=lambda *_: None)
+check("uninstall from My apps removes files, record and tile",
+      not folder.exists() and installed.get("jacestore", "proj-123") is None and not any(a_["name"] == "Synced App" for a_ in library.load()))
+installed.remove("flathub", "org.example.Thing")
+library.sync_installed()
+check("an install removed elsewhere drops out of My apps", not any(a_["name"] == "Flat Thing" for a_ in library.load()))
+
 # --- cancelling ------------------------------------------------------------------------------------------------
 import threading  # noqa: E402
 tok = cancel.Token()

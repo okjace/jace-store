@@ -1,6 +1,9 @@
 # Jace Store desktop: changelog
 
-## 1.2.4
+## 1.3.0
+- The Installed page is gone: everything Jace Store installs (from Jace Store, Flathub, the AUR, winget,
+  Homebrew...) now appears in My apps, alongside your own apps, showing where it came from. Open,
+  Details and Uninstall are in each app's ⋯ menu. Apps you'd already installed move over automatically.
 - My apps: "Uninstall from this computer" removes the program itself, not just its place in the list.
   Jace Store works out what installed it: on Linux a Flatpak, Snap, distro package (pacman, apt, dnf,
   zypper) or AppImage; on macOS the app goes to the Trash; on Windows the program's own uninstaller

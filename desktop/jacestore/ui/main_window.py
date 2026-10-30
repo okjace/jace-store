@@ -1,4 +1,4 @@
-"""The Jace Store window: Discover, Search, project pages, Installed, Updates, Settings."""
+"""The Jace Store window: Discover, Search, project pages, My apps, Updates, Settings."""
 import webbrowser
 
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, QUrl, Signal
@@ -1060,6 +1060,13 @@ class AppDialog(QDialog):
         for lab, w in (("Start it with (arguments)", self.args), ("Website", self.website), ("Notes", self.notes)):
             lay.addWidget(label(lab, muted=True))
             lay.addWidget(w)
+        if data.get("kind") == "installed":       # installed by Jace Store: how to start it isn't editable
+            for w in (self.kind, self.target, browse, self.args):
+                w.setVisible(False)
+            for i in range(lay.count()):
+                it = lay.itemAt(i).widget()
+                if isinstance(it, QLabel) and it.text() in ("What is it?", "What to start", "Start it with (arguments)"):
+                    it.setVisible(False)
         lay.addWidget(label("Only on this computer. Apps you add here are never uploaded or shown to anyone.", muted=True, wrap=True))
         row = QHBoxLayout()
         self.deleted = False
@@ -1102,6 +1109,13 @@ class AppDialog(QDialog):
                 self.name.setText(Path(f).stem.replace("-", " ").replace("_", " ").title())
 
     def _save(self):
+        if self.app.get("kind") == "installed":
+            library.update(self.app["id"], name=self.name.text().strip() or self.app["name"],
+                           website=self.website.text().strip(), notes=self.notes.toPlainText().strip())
+            if self.logo_file:
+                library.set_logo(self.app["id"], self.logo_file)
+            self.accept()
+            return
         name, target, kind = self.name.text().strip(), self.target.text().strip(), self.kind.currentData()
         if not name or not target:
             QMessageBox.warning(self, APP_NAME, "Give it a name and say what to start.")
@@ -1143,13 +1157,24 @@ class AppTile(QFrame):
         lay.addWidget(more, 0, Qt.AlignRight)
         ic = QLabel()
         ic.setFixedSize(64, 64)
-        ic.setPixmap(app_pixmap(app, 64))
+        if app.get("icon_url") and not (app.get("icon") and Path(app["icon"]).exists()):
+            images.load_into(ic, app["icon_url"], app["name"], 64)
+        else:
+            ic.setPixmap(app_pixmap(app, 64))
         lay.addWidget(ic, 0, Qt.AlignHCenter)
         n = label(app["name"])
         n.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
         n.setWordWrap(True)
         n.setStyleSheet("font-weight:600")
         lay.addWidget(n)
+        if app.get("kind") == "installed":
+            rec = library.installed_record(app) or {}
+            src = "Jace Store" if rec.get("source") == "jacestore" else (sources.by_id(rec.get("source", "")) or type("S", (), {"name": rec.get("source", "")})).name
+            note = " · in a terminal" if rec.get("pending") else (" · downloaded" if rec.get("kind") == "opened" else "")
+            sub = label(f"{src}{note}", muted=True)
+            sub.setAlignment(Qt.AlignHCenter)
+            sub.setStyleSheet("font-size:8pt")
+            lay.addWidget(sub)
         lay.addStretch()
 
     def mouseReleaseEvent(self, e):
@@ -1160,16 +1185,23 @@ class AppTile(QFrame):
         self._menu(e.globalPos())
 
     def _menu(self, pos):
+        app, page = self.app, self.page
+        rec = library.installed_record(app) if app.get("kind") == "installed" else None
         m = QMenu(self)
-        m.addAction("Open", lambda: self.page.open_app(self.app))
-        m.addAction("Edit…", lambda: self.page.edit(self.app))
-        m.addAction("Change logo…", lambda: self.page.change_logo(self.app))
-        if self.app.get("website"):
-            m.addAction("Website", lambda: webbrowser.open(self.app["website"]))
+        m.addAction("Open", lambda: page.open_app(app))
+        if rec and rec.get("source") == "jacestore" and rec.get("slug"):
+            m.addAction("Details", lambda: page.win.open_project(rec["slug"]))
+        m.addAction("Edit…", lambda: page.edit(app))
+        m.addAction("Change logo…", lambda: page.change_logo(app))
+        if app.get("website"):
+            m.addAction("Website", lambda: webbrowser.open(app["website"]))
         m.addSeparator()
-        m.addAction("Delete from My apps", lambda: self.page.remove(self.app))
-        if self.app.get("kind") != "url":
-            m.addAction("Uninstall from this computer…", lambda: self.page.uninstall(self.app))
+        if rec is not None or app.get("kind") == "installed":
+            m.addAction("Uninstall…", lambda: page.uninstall(app))
+        else:
+            m.addAction("Delete from My apps", lambda: page.remove(app))
+            if app.get("kind") != "url":
+                m.addAction("Uninstall from this computer…", lambda: page.uninstall(app))
         m.exec(pos)
 
 
@@ -1179,8 +1211,9 @@ class MyAppsPage(Page):
     def __init__(self, win):
         super().__init__(win)
         self.body.addWidget(label("My apps", h1=True))
-        self.body.addWidget(label("Your own library: programs from anywhere, websites, games, with your own logos. "
-                                  "It stays on this computer and is never uploaded or shown to anyone.", muted=True, wrap=True))
+        self.body.addWidget(label("Everything you installed with Jace Store, plus anything else you add: programs from anywhere, "
+                                  "websites and games, with your own logos. Your own additions stay on this computer and are never "
+                                  "uploaded or shown to anyone.", muted=True, wrap=True))
         bar = QHBoxLayout()
         self.filter = QLineEdit()
         self.filter.setPlaceholderText("Filter…")
@@ -1211,6 +1244,10 @@ class MyAppsPage(Page):
 
     def _render(self):
         clear(self.flow)
+        try:
+            library.sync_installed()        # apps Jace Store installed (store, Flathub, AUR...) are in here too
+        except Exception:  # noqa: BLE001 - never stop the page from showing
+            pass
         apps = sorted(library.load(), key=lambda a: a["name"].lower())
         f = self.filter.text().strip().lower()
         shown = [a for a in apps if not f or f in a["name"].lower() or f in (a.get("notes") or "").lower()]
@@ -1249,6 +1286,15 @@ class MyAppsPage(Page):
         def go(plan):
             self.status.setText("")
             if not plan:
+                if app.get("kind") == "installed":
+                    if QMessageBox.question(self, APP_NAME, f"{app['name']} was downloaded and opened (it ran its own installer), so Jace Store "
+                                            "can't uninstall it. Uninstall it in your system settings.\n\nRemove it from My apps?") == QMessageBox.Yes:
+                        from jacestore import installed as _inst
+                        rec = library.installed_record(app) or {}
+                        _inst.remove(rec.get("source", ""), rec.get("id", ""))
+                        library.remove(app["id"])
+                        self._render()
+                    return
                 QMessageBox.information(self, APP_NAME, f"Jace Store can't tell how {app['name']} was installed, so it can't uninstall it. "
                                         "Remove it with the tool you installed it with (or Delete it from My apps to just hide it here).")
                 return
@@ -1285,60 +1331,6 @@ class MyAppsPage(Page):
             self.status.setText(f"Added {n} app{'s' if n != 1 else ''}." if n else "Every app on this computer is already here.")
             self._render()
         run_async(lambda ctx: library.scan_system(), done, lambda e: self.status.setText(f"Couldn't look for apps: {e}"))
-
-
-class InstalledPage(Page):
-    def shown(self):
-        clear(self.body)
-        self.body.addWidget(label("Installed", h1=True))
-        self.body.addWidget(label("Apps you installed with Jace Store.", muted=True))
-        recs = sorted(installed.load().values(), key=lambda r: (r.get("title") or "").lower())
-        if not recs:
-            self.body.addWidget(label("Nothing yet. Find something on Discover or Search.", muted=True))
-        for r in recs:
-            self.body.addWidget(self._row(r))
-        self.body.addStretch()
-
-    def _row(self, r):
-        f = QFrame()
-        f.setObjectName("card")
-        lay = QHBoxLayout(f)
-        lay.setContentsMargins(12, 10, 12, 10)
-        icon = QLabel()
-        icon.setFixedSize(40, 40)
-        images.load_into(icon, r.get("icon_url"), r.get("title", "?"), 40)
-        lay.addWidget(icon)
-        col = QVBoxLayout()
-        t = label(r.get("title") or r.get("id"))
-        t.setStyleSheet("font-weight:700")
-        col.addWidget(t)
-        src = "Jace Store" if r["source"] == "jacestore" else (sources.by_id(r["source"]).name if sources.by_id(r["source"]) else r["source"])
-        how = {"opened": "downloaded and opened", "package": "system package", "appimage": "AppImage", "flatpak": "Flatpak",
-               "folder": "app folder", "msi": "Windows Installer", "mac_app": "app", "pkg": "macOS package"}.get(r.get("kind"), "")
-        col.addWidget(label(" · ".join(x for x in (src, r.get("version_number"), how,
-                                                     "finishing in a terminal" if r.get("pending") else "") if x), muted=True))
-        lay.addLayout(col, 1)
-        if r["source"] == "jacestore":
-            page = button("Details")
-            page.clicked.connect(lambda: self.win.open_project(r["slug"]))
-            lay.addWidget(page)
-        if r.get("launch"):
-            o = button("Open", primary=True)
-            o.clicked.connect(lambda: installer.launch(r) or QMessageBox.information(self, APP_NAME, "Open it from your app menu."))
-            lay.addWidget(o)
-        rm = button("Uninstall" if r["source"] != "jacestore" or installer.can_uninstall(r) else "Remove from list", danger=True)
-        rm.clicked.connect(lambda: self._remove(r))
-        lay.addWidget(rm)
-        return f
-
-    def _remove(self, r):
-        if r["source"] == "jacestore" and not installer.can_uninstall(r):
-            installed.remove(r["source"], r["id"])
-        else:
-            if QMessageBox.question(self, APP_NAME, f"Uninstall {r.get('title')}?") != QMessageBox.Yes:
-                return
-            self.win.uninstall(r, after=self.shown)
-        self.shown()
 
 
 class UpdatesPage(Page):
@@ -1628,7 +1620,7 @@ class SettingsPage(Page):
 # --- window --------------------------------------------------------------------------------------------
 
 class MainWindow(QMainWindow):
-    NAV = ["Discover", "Search", "Installed", "My apps", "Updates", "Settings"]
+    NAV = ["Discover", "Search", "My apps", "Updates", "Settings"]
 
     def __init__(self):
         super().__init__()
@@ -1680,7 +1672,7 @@ class MainWindow(QMainWindow):
 
         self.jobs = JobPanel()
         self.stack = QStackedWidget()
-        self.pages = {"Discover": DiscoverPage(self), "Search": SearchPage(self), "Installed": InstalledPage(self), "My apps": MyAppsPage(self),
+        self.pages = {"Discover": DiscoverPage(self), "Search": SearchPage(self), "My apps": MyAppsPage(self),
                       "Updates": UpdatesPage(self), "Settings": SettingsPage(self)}
         for p in self.pages.values():
             self.stack.addWidget(p)
@@ -1723,7 +1715,7 @@ class MainWindow(QMainWindow):
     def back(self):
         w = self.history.pop() if self.history else self.pages["Discover"]
         self.stack.setCurrentWidget(w)
-        if isinstance(w, (InstalledPage, UpdatesPage)):
+        if isinstance(w, (MyAppsPage, UpdatesPage)):
             w.shown()
 
     def search(self, q: str):
@@ -1779,7 +1771,7 @@ class MainWindow(QMainWindow):
 
     def _jobs_finished(self):
         w = self.stack.currentWidget()
-        if isinstance(w, InstalledPage):
+        if isinstance(w, MyAppsPage):
             w.shown()
         actions.cleanup_downloads()
 

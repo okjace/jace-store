@@ -94,6 +94,12 @@ def launch(app: dict) -> None:
     kind, target = app.get("kind"), app.get("target", "")
     env = child_env()
     args = app.get("args", "").split() if app.get("args") else []
+    if kind == "installed":
+        from jacestore import installer
+        rec = installed_record(app)
+        if not rec or not installer.launch(rec):
+            raise RuntimeError("Open it from your app menu (Jace Store doesn't know how to start this one).")
+        return
     if kind == "url":
         import webbrowser
         webbrowser.open(target)
@@ -218,10 +224,12 @@ def scan_system() -> list[dict]:
 
 def import_system(entries: list[dict]) -> int:
     """Add scanned apps that aren't in the library yet. Returns how many were added."""
+    from jacestore import installed
     have = {a.get("system_id") for a in load()}
+    ours = {Path(p).name for r in installed.load().values() for p in [r.get("desktop_file") or ""] if p}
     added = 0
     for e in entries:
-        if e["system_id"] in have:
+        if e["system_id"] in have or e["system_id"] in ours:
             continue
         add(e["name"], e["target"], e["kind"], e.get("icon"), "", e.get("notes", ""), "system", e["system_id"])
         added += 1
@@ -301,6 +309,17 @@ def uninstall_plan(app: dict) -> dict | None:
     kind, target = app.get("kind"), app.get("target", "")
     if kind == "url":
         return None
+    if kind == "installed":
+        from jacestore import installer, sources
+        rec = installed_record(app)
+        if not rec:
+            return None
+        if rec["source"] == "jacestore":
+            if not installer.can_uninstall(rec):
+                return None                         # downloaded and opened: Jace Store didn't install it itself
+            return {"method": "installed", "what": f"{app['name']} (installed from Jace Store)"}
+        src = sources.by_id(rec["source"])
+        return {"method": "installed", "what": f"{app['name']} (installed from {src.name if src else rec['source']})"}
     if sys.platform.startswith("linux"):
         exe = []
         if kind == "desktop":
@@ -349,6 +368,11 @@ def uninstall_app(app: dict, plan: dict, log=print):
     """Remove the program from the computer, then from My apps."""
     from jacestore.installer import elevated, run
     m = plan["method"]
+    if m == "installed":
+        from jacestore import actions
+        actions.uninstall(installed_record(app), log)   # also forgets the install record
+        remove(app["id"])
+        return
     if m == "flatpak":
         run(["flatpak", "uninstall", "-y", "--noninteractive", "--user" if plan.get("user") else "--system", plan["id"]], log)
     elif m == "snap":
@@ -379,3 +403,49 @@ def uninstall_app(app: dict, plan: dict, log=print):
         log(f"Opened {plan['name']}'s uninstaller")
         return
     remove(app["id"])
+
+
+# --- apps Jace Store installed (from the store or another source) live here too ----------------------------------
+
+def _installed_key(rec: dict) -> str:
+    return f"installed:{rec['source']}:{rec['id']}"
+
+
+def sync_installed() -> None:
+    """Add everything in installed.json to My apps, and drop entries whose install is gone."""
+    from jacestore import installed, sources
+    recs = installed.load()
+    # installs that finished in a terminal (AUR): confirmed once the package manager has them
+    for r in list(recs.values()):
+        if r.get("pending"):
+            src = sources.by_id(r.get("source", ""))
+            if src and src.installed_check(r["id"]):
+                clean = {k: v for k, v in r.items() if k not in ("pending", "installed_at", "source", "id")}
+                installed.put(r["source"], r["id"], clean)
+    recs = installed.load()
+    keys = {_installed_key(r) for r in recs.values() if r.get("source") and r.get("id")}
+    with _lock:
+        apps = load()
+        have = {a.get("system_id") for a in apps}
+        changed = False
+        for r in recs.values():
+            if not r.get("source") or not r.get("id"):
+                continue
+            k = _installed_key(r)
+            if k in have:
+                continue
+            apps.append({"id": uuid.uuid4().hex[:12], "name": r.get("title") or r["id"], "kind": "installed", "target": k,
+                         "args": "", "icon": None, "icon_url": r.get("icon_url"), "website": "", "notes": r.get("summary") or "",
+                         "origin": r["source"], "system_id": k, "added_at": r.get("installed_at") or time.time()})
+            changed = True
+        kept = [a for a in apps if a.get("kind") != "installed" or a.get("system_id") in keys]
+        if changed or len(kept) != len(apps):
+            _save(kept)
+
+
+def installed_record(app: dict) -> dict | None:
+    from jacestore import installed
+    if app.get("kind") != "installed":
+        return None
+    _, source, ident = app["target"].split(":", 2)
+    return installed.get(source, ident)
