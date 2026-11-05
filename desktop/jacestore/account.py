@@ -161,11 +161,20 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
 
+class _LocalServer(HTTPServer):
+    def server_bind(self):
+        # HTTPServer looks up the host's name (socket.getfqdn), which can take several seconds on
+        # macOS; 127.0.0.1 needs no name
+        import socketserver
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = "127.0.0.1", self.server_address[1]
+
+
 def browser_sign_in(timeout=300, cancel=None) -> dict | None:
     """Open the website's Connect page and wait for it to hand the session back. -> user, or None."""
     state = secrets.token_hex(16)
     handler = type("H", (_Handler,), {"result": {}, "state": state})
-    srv = HTTPServer(("127.0.0.1", 0), handler)
+    srv = _LocalServer(("127.0.0.1", 0), handler)
     srv.timeout = 1
     port = srv.server_address[1]
     webbrowser.open(f"{BASE}/desktop/connect?{urlencode({'port': port, 'state': state})}")

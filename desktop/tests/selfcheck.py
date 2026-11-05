@@ -261,7 +261,7 @@ _wb.open = lambda url: _opened.setdefault("url", url) or True
 account.refresh = lambda: account.user()
 _t = _th.Thread(target=lambda: account.browser_sign_in(timeout=20))
 _t.start()
-for _ in range(100):
+for _ in range(600):
     if "url" in _opened:
         break
     _t.join(0.05)
