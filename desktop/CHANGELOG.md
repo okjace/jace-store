@@ -1,5 +1,12 @@
 # Jace Store desktop: changelog
 
+## 1.4.0
+- Sign in to Jace Store from the app: your name and picture at the bottom of the sidebar, and a
+  Sign in / Sign out section in Settings. Signed in, you can like projects from their page.
+- On Jace OS it signs in by itself with the computer's Jace account (no clicks, no browser). If that
+  isn't possible it quietly stays signed out. Turn it off in Settings → Account.
+- Everywhere else, Sign in opens Jace Store in your browser; click Connect and the app is signed in.
+
 ## 1.3.0
 - The Installed page is gone: everything Jace Store installs (from Jace Store, Flathub, the AUR, winget,
   Homebrew...) now appears in My apps, alongside your own apps, showing where it came from. Open,

@@ -244,6 +244,38 @@ installed.remove("flathub", "org.example.Thing")
 library.sync_installed()
 check("an install removed elsewhere drops out of My apps", not any(a_["name"] == "Flat Thing" for a_ in library.load()))
 
+# --- signing in (Jace OS, and the browser handoff) ---------------------------------------------------------------
+from jacestore import account  # noqa: E402
+import threading as _th  # noqa: E402
+import webbrowser as _wb  # noqa: E402
+from urllib.parse import parse_qs as _pq, urlparse as _up  # noqa: E402
+_which = account.which
+account.which = lambda name: None
+check("no jace-account: quietly signed out", account.jace_os_sign_in() is False and account.load() is None)
+account.which = _which
+settings.save(jace_os_signin=False)
+check("Jace OS sign-in can be turned off", account.jace_os_sign_in() is False)
+settings.save(jace_os_signin=True)
+_opened = {}
+_wb.open = lambda url: _opened.setdefault("url", url) or True
+account.refresh = lambda: account.user()
+_t = _th.Thread(target=lambda: account.browser_sign_in(timeout=20))
+_t.start()
+for _ in range(100):
+    if "url" in _opened:
+        break
+    _t.join(0.05)
+_q = _pq(_up(_opened["url"]).query)
+import requests as _rq  # noqa: E402
+_bad = _rq.get(f"http://127.0.0.1:{_q['port'][0]}/callback", params={"state": "0" * 32, "token": "jst_x"}, timeout=5)
+check("browser handoff refuses the wrong state", _bad.status_code == 400 and account.load() is None)
+_ok = _rq.get(f"http://127.0.0.1:{_q['port'][0]}/callback", params={"state": _q["state"][0], "token": "jst_selfcheck"}, timeout=5)
+_t.join(10)
+check("browser handoff signs in", _ok.status_code == 200 and (account.load() or {}).get("token") == "jst_selfcheck")
+if sys.platform != "win32":
+    check("session file is private", (os.stat(account._file()).st_mode & 0o077) == 0)
+account.clear()
+
 # --- cancelling ------------------------------------------------------------------------------------------------
 import threading  # noqa: E402
 tok = cancel.Token()

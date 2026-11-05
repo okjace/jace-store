@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFil
 
 from pathlib import Path
 
-from jacestore import APP_NAME, APP_VERSION, STORE_URL, actions, cancel, installed, installer, library, selfinstall, settings, sources, store, updater
+from jacestore import APP_NAME, APP_VERSION, STORE_URL, account, actions, cancel, installed, installer, library, selfinstall, settings, sources, store, updater
 from jacestore.app_assets import asset
 from jacestore.system import detect
 from jacestore.ui import images
@@ -764,9 +764,16 @@ class ProjectPage(Page):
         self.second_btn.clicked.connect(self._second_action)
         web = button("View on website")
         web.clicked.connect(lambda: webbrowser.open(data.get("page_url") or f"{STORE_URL}/project/{data['slug']}"))
+        self.like_btn = button("♡")
+        self.like_btn.setToolTip("Like" if account.load() else "Sign in to like")
+        self.like_btn.clicked.connect(self._like)
+        self.liked = False
         actions_col.addWidget(self.main_btn)
         actions_col.addWidget(self.second_btn)
+        actions_col.addWidget(self.like_btn)
         actions_col.addWidget(web)
+        slug = data["slug"]
+        run_async(lambda ctx: store.like_state(slug), lambda r: slug == self.slug and self._show_like(r), lambda _: None)
         actions_col.addStretch()
         head.addLayout(actions_col)
         self.body.addLayout(head)
@@ -819,6 +826,28 @@ class ProjectPage(Page):
                 plats = ", ".join(sorted({fl["platform"] for fl in v.get("files", [])}))
                 self.body.addWidget(label(f"{v['name']}  ·  {v['version_number']}  ·  {v['channel']}  ·  {v['published_at'][:10]}  ·  {plats}", muted=True))
         self.refresh()
+
+    def _show_like(self, r):
+        self.liked = bool(r.get("liked"))
+        n = r.get("likes", 0)
+        self.like_btn.setText(f"{'♥' if self.liked else '♡'}  {n}")
+        self.like_btn.setStyleSheet("color: #f9a8d4" if self.liked else "")
+
+    def _like(self):
+        if not account.load():
+            self.win.sign_in()
+            return
+        slug, want = self.data["slug"], not self.liked
+        self.like_btn.setEnabled(False)
+
+        def done(r):
+            self.like_btn.setEnabled(True)
+            self._show_like(r)
+
+        def fail(e):
+            self.like_btn.setEnabled(True)
+            QMessageBox.warning(self, APP_NAME, f"Couldn't save that: {e}")
+        run_async(lambda ctx: store.set_like(slug, want), done, fail)
 
     def _file_changed(self):
         o = self.file_combo.currentData()
@@ -1502,6 +1531,28 @@ class SettingsPage(Page):
         sysinfo = detect()
         self.body.addWidget(label("Settings", h1=True))
 
+        box = self._box("Account")
+        a = account.load()
+        if a:
+            u = a.get("user") or {}
+            how = " (signed in with this computer's Jace account)" if a.get("how") == "jace-os" else ""
+            box.addWidget(label(f"Signed in as {u.get('display_name') or u.get('username') or 'you'} (@{u.get('username', '')}){how}", wrap=True))
+            out = button("Sign out")
+            out.clicked.connect(self.win.sign_out)
+            box.addWidget(out, 0, Qt.AlignLeft)
+        else:
+            box.addWidget(label("Sign in to like projects and use your Jace Store account here.", muted=True, wrap=True))
+            sin = button("Sign in", primary=True)
+            sin.clicked.connect(self.win.sign_in)
+            box.addWidget(sin, 0, Qt.AlignLeft)
+        if sysinfo.os == "linux":
+            auto = QCheckBox("Sign in automatically with this computer's Jace account (Jace OS)")
+            auto.setChecked(s.get("jace_os_signin", True))
+            auto.toggled.connect(lambda on: settings.save(jace_os_signin=on))
+            box.addWidget(auto)
+            if not account.jace_os_available():
+                box.addWidget(label("This computer doesn't have a Jace account (jace-account isn't installed).", muted=True, wrap=True))
+
         box = self._box("This computer")
         box.addWidget(label(sysinfo.describe(), sel=True))
         if sysinfo.os == "linux":
@@ -1668,6 +1719,21 @@ class MainWindow(QMainWindow):
         for n in self.NAV:
             self.nav.addItem(QListWidgetItem(n))
         sl.addWidget(self.nav, 1)
+        self.account_box = QFrame()
+        self.account_box.setObjectName("acct")
+        self.account_box.setStyleSheet("QFrame#acct, QFrame#acct QLabel { background: transparent; }")
+        ab = QHBoxLayout(self.account_box)
+        ab.setContentsMargins(14, 10, 14, 14)
+        self.account_pic = QLabel()
+        self.account_pic.setFixedSize(28, 28)
+        self.account_name = label("")
+        self.account_name.setStyleSheet("font-weight:600")
+        self.account_btn = button("Sign in")
+        self.account_btn.clicked.connect(self.sign_in)
+        ab.addWidget(self.account_pic)
+        ab.addWidget(self.account_name, 1)
+        ab.addWidget(self.account_btn)
+        sl.addWidget(self.account_box)
         mid.addWidget(side)
 
         self.jobs = JobPanel()
@@ -1691,7 +1757,9 @@ class MainWindow(QMainWindow):
         self.nav.currentRowChanged.connect(self._nav_changed)
         self.nav.setCurrentRow(0)
         self.jobs.finished.connect(self._jobs_finished)
+        self.update_account()
         QTimer.singleShot(1500, self._background_checks)
+        QTimer.singleShot(300, self._auto_sign_in)
 
     # navigation
     def _nav_changed(self, row):
@@ -1774,6 +1842,54 @@ class MainWindow(QMainWindow):
         if isinstance(w, MyAppsPage):
             w.shown()
         actions.cleanup_downloads()
+
+    # --- account ---------------------------------------------------------------------------------------
+    def update_account(self):
+        u = account.user()
+        signed = account.load() is not None
+        self.account_btn.setVisible(not signed)
+        self.account_pic.setVisible(signed)
+        if signed:
+            name = (u or {}).get("display_name") or (u or {}).get("username") or "Signed in"
+            self.account_name.setText(name)
+            self.account_name.setToolTip(f"@{(u or {}).get('username', '')}" + (" · signed in with Jace OS" if account.load().get("how") == "jace-os" else ""))
+            images.load_into(self.account_pic, (u or {}).get("avatar_url"), name, 28)
+        else:
+            self.account_name.setText("")
+        if isinstance(self.stack.currentWidget(), SettingsPage):
+            self.stack.currentWidget().shown()
+
+    def _auto_sign_in(self):
+        """Jace OS: sign in with the computer's Jace account, quietly (nothing is shown if it can't)."""
+        if account.load():
+            run_async(lambda ctx: account.refresh(), lambda _: self.update_account(), lambda _: None)
+            return
+        if not account.jace_os_available() or not settings.load().get("jace_os_signin", True):
+            return
+        run_async(lambda ctx: account.jace_os_sign_in(), lambda ok: ok and self.update_account(), lambda _: None)
+
+    def sign_in(self):
+        self.account_btn.setEnabled(False)
+        self.account_btn.setText("Waiting for the browser…")
+
+        def done(u):
+            self.account_btn.setEnabled(True)
+            self.account_btn.setText("Sign in")
+            self.update_account()
+            if not account.load():
+                QMessageBox.information(self, APP_NAME, "Sign-in didn't finish. Click Sign in to try again.")
+
+        def fail(e):
+            self.account_btn.setEnabled(True)
+            self.account_btn.setText("Sign in")
+            QMessageBox.warning(self, APP_NAME, f"Couldn't sign in: {e}")
+        # Jace OS first (instant, no browser), then the website
+        run_async(lambda ctx: account.jace_os_sign_in() and account.user() or account.browser_sign_in(), done, fail)
+
+    def sign_out(self):
+        if QMessageBox.question(self, APP_NAME, "Sign out of Jace Store on this computer?") != QMessageBox.Yes:
+            return
+        run_async(lambda ctx: account.sign_out(), lambda _: self.update_account(), lambda _: self.update_account())
 
     def set_update_count(self, n):
         self.nav.item(self.NAV.index("Updates")).setText(f"Updates  ({n})" if n else "Updates")

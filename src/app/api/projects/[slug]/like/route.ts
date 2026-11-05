@@ -18,3 +18,18 @@ export const POST = handler(async (req, { params }: { params: Promise<{ slug: st
   const { data } = await admin.from("projects").select("likes").eq("id", project.id).single();
   return { liked: liked !== false, likes: data?.likes ?? 0 };
 });
+
+/** GET — this project's likes, and whether the caller (if signed in) likes it. -> { liked, likes } */
+export const GET = handler(async (req, { params }: { params: Promise<{ slug: string }> }) => {
+  const project = await anyProject((await params).slug);
+  const admin = createAdminClient();
+  const { data } = await admin.from("projects").select("likes").eq("id", project.id).single();
+  let liked = false;
+  try {
+    const userId = await requireApiUser(req);
+    liked = !!(await admin.from("likes").select("project_id").eq("user_id", userId).eq("project_id", project.id).maybeSingle()).data;
+  } catch {
+    /* not signed in */
+  }
+  return { liked, likes: data?.likes ?? 0 };
+});

@@ -6,7 +6,8 @@ from jacestore import STORE_URL
 from jacestore.net import get_json, session
 from jacestore.system import detect
 
-BASE = os.environ.get("JACE_STORE_URL", STORE_URL).rstrip("/") + "/api/desktop/v1"
+STORE = os.environ.get("JACE_STORE_URL", STORE_URL).rstrip("/")
+BASE = STORE + "/api/desktop/v1"
 
 
 def _q(extra: dict | None = None) -> dict:
@@ -47,3 +48,22 @@ def updates(installed: list[dict]) -> dict:
 
 def meta() -> dict:
     return get_json(f"{BASE}/meta")
+
+
+def like_state(slug: str) -> dict:
+    """{liked, likes} (liked is for the signed-in account)."""
+    from jacestore import account
+    r = session.get(f"{STORE}/api/projects/{quote(slug)}/like", headers=account.headers(), timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
+def set_like(slug: str, liked: bool) -> dict:
+    from jacestore import account
+    r = session.post(f"{STORE}/api/projects/{quote(slug)}/like", headers=account.headers(), json={"liked": liked}, timeout=15)
+    if r.status_code == 401:
+        account.clear()
+        raise RuntimeError("You've been signed out. Sign in again.")
+    if not r.ok:
+        raise RuntimeError((r.json() if r.headers.get("content-type", "").startswith("application/json") else {}).get("error") or r.reason)
+    return r.json()

@@ -3,7 +3,8 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { JACE, jaceLoginEmail, jaceRedirectUri, normalizeUserinfo, STATE_COOKIE, type JaceUser } from "@/lib/jaceOAuth";
+import { JACE, jaceRedirectUri, normalizeUserinfo, STATE_COOKIE } from "@/lib/jaceOAuth";
+import { jaceStoreUserFor } from "@/lib/jaceAccounts";
 
 /**
  * Finish "Sign in with Jace" (or "Link Jace" from account settings):
@@ -83,7 +84,7 @@ export async function GET(request: Request) {
   }
 
   // 2b. Sign in.
-  const userId = existing?.user_id ?? (await createJaceUser(admin, jace));
+  const userId = await jaceStoreUserFor(jace);
   if (!userId) return fail("Couldn't create your account");
   const { data: target } = await admin.auth.admin.getUserById(userId);
   const email = target.user?.email;
@@ -97,39 +98,4 @@ export async function GET(request: Request) {
 
   await currentState(userId, true).catch(() => null);         // bring over a Jace ban / mute right away
   return finish(safeNext(saved.next, "/dashboard"));
-}
-
-/**
- * New Jace user: create a store account with a placeholder login email derived
- * from the Jace id (never the real email), so a Jace login can't take over an
- * existing email/GitHub account. No mail is ever sent to this address.
- */
-async function createJaceUser(admin: ReturnType<typeof createAdminClient>, jace: JaceUser) {
-  const loginEmail = jaceLoginEmail(jace.id);
-  let userId: string | undefined;
-  const created = await admin.auth.admin.createUser({
-    email: loginEmail,
-    email_confirm: true,
-    user_metadata: {
-      provider: "jace",
-      jace_id: jace.id,
-      username: jace.username ?? undefined,
-      full_name: jace.name ?? jace.username ?? undefined,
-      avatar_url: jace.avatarUrl ?? undefined,
-      contact_email: jace.email ?? undefined,
-    },
-  });
-  if (created.data.user) {
-    userId = created.data.user.id;
-  } else if (/already/i.test(created.error?.message ?? "")) {
-    // Placeholder account exists but its link row is missing: find it.
-    for (let page = 1; page <= 50 && !userId; page++) {
-      const { data } = await admin.auth.admin.listUsers({ page, perPage: 200 });
-      userId = data.users.find((u) => u.email === loginEmail)?.id;
-      if (data.users.length < 200) break;
-    }
-  }
-  if (!userId) return null;
-  await admin.from("jace_links").upsert({ jace_id: jace.id, user_id: userId, jace_username: jace.username }, { onConflict: "jace_id" });
-  return userId;
 }
