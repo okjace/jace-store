@@ -24,6 +24,8 @@ export interface JaceUser {
   username: string | null;
   name: string | null;
   email: string | null;
+  /** Jace confirmed this email belongs to them (needed to match an existing Jace Store account). */
+  emailVerified: boolean;
   avatarUrl: string | null;
 }
 
@@ -44,6 +46,7 @@ export function normalizeUserinfo(raw: Record<string, unknown>): JaceUser | null
     username: pick("username", "preferred_username", "user_name", "login", "handle"),
     name: pick("name", "display_name", "full_name"),
     email: pick("email"),
+    emailVerified: raw.email_verified === true,
     avatarUrl: pick("avatar_url", "picture", "avatar", "image"),
   };
 }

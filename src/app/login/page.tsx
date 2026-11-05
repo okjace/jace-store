@@ -1,87 +1,23 @@
-"use client";
-import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
+import { SITE_NAME } from "@/lib/constants";
 
-export default function LoginPage() {
-  return (
-    <Suspense>
-      <Login />
-    </Suspense>
-  );
-}
+export const metadata = { title: "Sign in" };
 
-function Login() {
-  const router = useRouter();
-  const params = useSearchParams();
-  const next = params.get("next") || "/dashboard";
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(params.get("error"));
-  const supabase = createClient();
-  const redirectTo = () => `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setMsg(null);
-    const { data, error } =
-      mode === "signin"
-        ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo() } });
-    setBusy(false);
-    if (error) return setMsg(error.message);
-    if (mode === "signup" && !data.session) return setMsg("Check your email to confirm your account.");
-    router.push(next);
-    router.refresh();
-  }
-
-  async function forgotPassword() {
-    if (!email) return setMsg("Type your email above first, then click Forgot password.");
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent("/settings#password")}`,
-    });
-    setMsg(error ? error.message : `If ${email} has an account, a reset link is on its way. It signs you in so you can set a new password.`);
-  }
-
-  async function oauth(provider: "github") {
-    const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: redirectTo() } });
-    if (error) setMsg(error.message);
-  }
-
+/** Jace is the only way to sign in to Jace Store. */
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
+  const { next: nextParam, error } = await searchParams;
+  const next = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/dashboard";
   return (
     <div className="mx-auto max-w-sm">
-      <div className="card p-6">
-        <h1 className="mb-4 text-2xl font-black">{mode === "signin" ? "Sign in" : "Create account"}</h1>
-        <div className="space-y-2">
-          <button onClick={() => oauth("github")} className="btn-ghost w-full">Continue with GitHub</button>
-          <a href={`/api/auth/jace/start?next=${encodeURIComponent(next)}`} className="btn-ghost w-full">Continue with Jace</a>
-        </div>
-        <div className="my-4 flex items-center gap-3 text-xs text-muted">
-          <div className="h-px flex-1 bg-line" />or<div className="h-px flex-1 bg-line" />
-        </div>
-        <form onSubmit={submit} className="space-y-3">
-          <div>
-            <label className="label" htmlFor="email">Email</label>
-            <input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="input" autoComplete="email" />
-          </div>
-          <div>
-            <label className="label" htmlFor="pw">Password</label>
-            <input id="pw" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} className="input" autoComplete={mode === "signin" ? "current-password" : "new-password"} />
-          </div>
-          {mode === "signin" && (
-            <button type="button" onClick={forgotPassword} className="text-xs text-muted hover:text-text hover:underline">Forgot password?</button>
-          )}
-          {msg && <p className="text-sm text-amber-300">{msg}</p>}
-          <button disabled={busy} className="btn-primary w-full">{busy ? "…" : mode === "signin" ? "Sign in" : "Sign up"}</button>
-        </form>
-        <p className="mt-4 text-center text-sm text-muted">
-          {mode === "signin" ? "New here? " : "Have an account? "}
-          <button className="text-brand underline" onClick={() => setMode(mode === "signin" ? "signup" : "signin")}>
-            {mode === "signin" ? "Create an account" : "Sign in"}
-          </button>
+      <div className="card space-y-5 p-6 text-center">
+        <h1 className="text-2xl font-black">Sign in to {SITE_NAME}</h1>
+        <p className="text-sm text-muted">Jace Store uses your Jace account. New here? Signing in makes your Jace Store account.</p>
+        {error && <p className="text-sm text-amber-300">{error}</p>}
+        <a href={`/api/auth/jace/start?next=${encodeURIComponent(next)}`} className="btn-primary w-full py-3! text-base">Continue with Jace</a>
+        <p className="text-xs text-muted">
+          No Jace account? <a href="https://jaceo.vercel.app" className="underline hover:text-text">Make one on Jace</a>.
+          Made your Jace Store account with email or GitHub? Sign in with a Jace account that has the same (verified) email,
+          and you&apos;ll get your Jace Store account back. <Link href="/desktop" className="underline hover:text-text">Desktop app</Link>
         </p>
       </div>
     </div>

@@ -8,7 +8,34 @@ import { jaceLoginEmail, type JaceUser } from "./jaceOAuth";
 export async function jaceStoreUserFor(jace: JaceUser): Promise<string | null> {
   const admin = createAdminClient();
   const { data: existing } = await admin.from("jace_links").select("user_id").eq("jace_id", jace.id).maybeSingle();
-  return existing?.user_id ?? (await createJaceUser(admin, jace));
+  if (existing) return existing.user_id;
+  const matched = await accountWithVerifiedEmail(admin, jace);
+  if (matched) {
+    await admin.from("jace_links").insert({ jace_id: jace.id, user_id: matched, jace_username: jace.username });
+    return matched;
+  }
+  return await createJaceUser(admin, jace);
+}
+
+/**
+ * Jace is the only way to sign in, so accounts made with email or GitHub before that are carried
+ * over: a Jace account whose email Jace has verified signs in to the Jace Store account with the
+ * same confirmed email, if that account isn't linked to a Jace account yet.
+ */
+async function accountWithVerifiedEmail(admin: ReturnType<typeof createAdminClient>, jace: JaceUser): Promise<string | null> {
+  const email = jace.email?.trim().toLowerCase();
+  if (!email || !jace.emailVerified) return null;
+  for (let page = 1; page <= 50; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
+    if (error) return null;
+    const u = data.users.find((x) => x.email?.toLowerCase() === email && x.email_confirmed_at);
+    if (u) {
+      const { data: linked } = await admin.from("jace_links").select("jace_id").eq("user_id", u.id).maybeSingle();
+      return linked ? null : u.id;
+    }
+    if (data.users.length < 200) break;
+  }
+  return null;
 }
 
 /**
