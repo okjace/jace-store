@@ -122,7 +122,14 @@ export async function requireCanPost(userId: string, changingHandle = false) {
 export async function blockedHandle(handle: string, userId: string): Promise<string | null> {
   const rules = await automodRules();
   if (!rules.enabled || !handle || !handleProblem(rules, handle)) return null;
+  if (await isOwnJaceUsername(userId, handle)) return null;
   return `Your handle @${handle} isn't allowed on Jace Store any more (Jace's username rules). Pick a new one in Settings → Profile to post again.`;
+}
+
+/** Is this handle exactly the username of the Jace account linked to this Jace Store account? */
+export async function isOwnJaceUsername(userId: string, handle: string): Promise<boolean> {
+  const { data } = await createAdminClient().from("jace_links").select("jace_username").eq("user_id", userId).maybeSingle();
+  return !!data?.jace_username && data.jace_username.toLowerCase() === handle.toLowerCase();
 }
 
 export interface Content {
@@ -146,8 +153,9 @@ export async function guardPost(userId: string, area: string, content: Content =
   await requireCanPost(userId, !!content.handle);
   const rules = await automodRules();
   if (!rules.enabled) return;
-  // Handles follow Jace's username rules for everyone, moderators too (like Jace's own usernames)
-  const handle = content.handle ? handleProblem(rules, content.handle) : null;
+  // Handles follow Jace's username rules for everyone, moderators too (like Jace's own usernames),
+  // except your own Jace username, which Jace already approved for you (e.g. @okjace)
+  const handle = content.handle && !(await isOwnJaceUsername(userId, content.handle)) ? handleProblem(rules, content.handle) : null;
   if (handle) await block(userId, "handle", content.handle!, handle, rules);
   const problem = findProblem(rules, { ...content, handle: null });
   if (!problem || (await isAdmin(userId))) return;

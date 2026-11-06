@@ -2,6 +2,7 @@ import { createAdminClient } from "./supabase/admin";
 import { jaceLoginEmail, type JaceUser } from "./jaceOAuth";
 import { automodRules } from "./jace";
 import { handleProblem } from "./automod";
+import { isOwnJaceUsername } from "./accountModeration";
 
 /**
  * The Jace Store account for a Jace account: the one it's linked to (jace_links), or a new one.
@@ -22,6 +23,7 @@ async function fixBlockedHandle(userId: string) {
   ]);
   // only brand-new accounts: existing ones are asked to pick a new handle themselves (blockedHandle)
   if (!p || Date.now() - new Date(p.created_at).getTime() > 120_000 || !handleProblem(rules, p.username)) return;
+  if (await isOwnJaceUsername(userId, p.username)) return;     // their own Jace username: Jace allowed it
   for (let i = 0; i < 5; i++) {
     const candidate = `user${Math.floor(100000 + Math.random() * 900000)}`;
     const { error } = await admin.from("profiles").update({ username: candidate }).eq("id", userId);
