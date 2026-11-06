@@ -33,8 +33,14 @@ async function fixBlockedHandle(userId: string) {
 
 async function findOrCreate(jace: JaceUser): Promise<string | null> {
   const admin = createAdminClient();
-  const { data: existing } = await admin.from("jace_links").select("user_id").eq("jace_id", jace.id).maybeSingle();
-  if (existing) return existing.user_id;
+  const { data: existing } = await admin.from("jace_links").select("user_id, jace_username").eq("jace_id", jace.id).maybeSingle();
+  if (existing) {
+    // renamed on Jace since last time: keep Jace Store's copy up to date
+    if (jace.username && jace.username !== existing.jace_username) {
+      await admin.from("jace_links").update({ jace_username: jace.username }).eq("jace_id", jace.id);
+    }
+    return existing.user_id;
+  }
   const matched = await accountWithVerifiedEmail(admin, jace);
   if (matched) {
     await admin.from("jace_links").insert({ jace_id: jace.id, user_id: matched, jace_username: jace.username });

@@ -128,8 +128,22 @@ export async function blockedHandle(handle: string, userId: string): Promise<str
 
 /** Is this handle exactly the username of the Jace account linked to this Jace Store account? */
 export async function isOwnJaceUsername(userId: string, handle: string): Promise<boolean> {
-  const { data } = await createAdminClient().from("jace_links").select("jace_username").eq("user_id", userId).maybeSingle();
-  return !!data?.jace_username && data.jace_username.toLowerCase() === handle.toLowerCase();
+  const admin = createAdminClient();
+  const { data } = await admin.from("jace_links").select("jace_id, jace_username").eq("user_id", userId).maybeSingle();
+  if (!data) return false;
+  if (data.jace_username && data.jace_username.toLowerCase() === handle.toLowerCase()) return true;
+  // the saved one may be old (renamed on Jace) or missing: ask Jace, and remember it
+  const current = await currentJaceUsername(data.jace_id);
+  if (current && current !== data.jace_username) {
+    await admin.from("jace_links").update({ jace_username: current }).eq("jace_id", data.jace_id);
+  }
+  return !!current && current.toLowerCase() === handle.toLowerCase();
+}
+
+/** The Jace account's username right now (from Jace), or null if Jace can't say. */
+export async function currentJaceUsername(jaceId: string): Promise<string | null> {
+  const j = await jaceModerationStatus(jaceId);
+  return j?.username || null;
 }
 
 export interface Content {

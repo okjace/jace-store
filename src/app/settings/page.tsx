@@ -3,6 +3,9 @@ import { requireUser } from "@/lib/requireUser";
 import type { Profile } from "@/lib/types";
 import ProfileSettings from "@/components/settings/ProfileSettings";
 import DeleteAccount from "@/components/settings/DeleteAccount";
+import UseJaceHandle from "@/components/settings/UseJaceHandle";
+import { currentJaceUsername } from "@/lib/accountModeration";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const metadata = { title: "Account settings" };
 
@@ -11,9 +14,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const { supabase, user } = await requireUser("/settings");
   const [{ data: profile }, { data: jace }, { count: projectCount }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).single(),
-    supabase.from("jace_links").select("jace_username").eq("user_id", user.id).maybeSingle(),
+    supabase.from("jace_links").select("jace_id, jace_username").eq("user_id", user.id).maybeSingle(),
     supabase.from("projects").select("id", { count: "exact", head: true }).eq("owner_id", user.id),
   ]);
+
+  // the Jace username right now (they may have renamed on Jace); keep Jace Store's copy fresh
+  let jaceName = jace?.jace_username ?? null;
+  if (jace) {
+    const live = await currentJaceUsername(jace.jace_id).catch(() => null);
+    if (live && live !== jaceName) {
+      await createAdminClient().from("jace_links").update({ jace_username: live }).eq("jace_id", jace.jace_id);
+      jaceName = live;
+    }
+  }
+  const handleDiffers = !!jaceName && profile && jaceName.toLowerCase() !== String(profile.username).toLowerCase();
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
@@ -25,9 +39,18 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <section id="sign-in" className="card scroll-mt-24 space-y-3 p-6">
         <h2 className="text-lg font-bold">Signing in</h2>
         {jace ? (
-          <p className="text-sm">
-            You sign in with your Jace account{jace.jace_username ? <> <b>@{jace.jace_username}</b></> : null}. Jace is the only way to sign in to Jace Store.
-          </p>
+          <>
+            <p className="text-sm">
+              You sign in with your Jace account{jaceName ? <> <b>@{jaceName}</b></> : null}. Jace is the only way to sign in to Jace Store.
+            </p>
+            {handleDiffers && (
+              <p className="text-sm text-muted">Your Jace Store handle is <b className="text-text">@{profile.username}</b>, which isn&apos;t your Jace username.</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {handleDiffers && <UseJaceHandle jaceUsername={jaceName!} />}
+              <a href="/api/auth/jace/start?mode=link&next=/settings" className="btn-ghost" title="Changed your username on Jace? Bring it over">Update from Jace</a>
+            </div>
+          </>
         ) : (
           <>
             <p className="rounded-lg border border-amber-300/40 bg-amber-300/10 p-3 text-sm text-amber-100">
