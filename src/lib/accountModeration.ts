@@ -122,7 +122,6 @@ export async function requireCanPost(userId: string, changingHandle = false) {
 export async function blockedHandle(handle: string, userId: string): Promise<string | null> {
   const rules = await automodRules();
   if (!rules.enabled || !handle || !handleProblem(rules, handle)) return null;
-  if (await isAdmin(userId)) return null;
   return `Your handle @${handle} isn't allowed on Jace Store any more (Jace's username rules). Pick a new one in Settings → Profile to post again.`;
 }
 
@@ -147,7 +146,10 @@ export async function guardPost(userId: string, area: string, content: Content =
   await requireCanPost(userId, !!content.handle);
   const rules = await automodRules();
   if (!rules.enabled) return;
-  const problem = findProblem(rules, content);
+  // Handles follow Jace's username rules for everyone, moderators too (like Jace's own usernames)
+  const handle = content.handle ? handleProblem(rules, content.handle) : null;
+  if (handle) await block(userId, "handle", content.handle!, handle, rules);
+  const problem = findProblem(rules, { ...content, handle: null });
   if (!problem || (await isAdmin(userId))) return;
   await block(userId, area, problem.excerpt, problem, rules);
 }
