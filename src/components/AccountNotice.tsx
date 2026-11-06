@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { currentState, restriction } from "@/lib/accountModeration";
+import { blockedHandle, currentState, restriction } from "@/lib/accountModeration";
 
 /** Shown on every page while your account is banned or muted (here or on Jace). */
 export default async function AccountNotice() {
@@ -8,6 +8,15 @@ export default async function AccountNotice() {
   if (!user) return null;
   const r = restriction(await currentState(user.id).catch(() => null));
   if (!r) {
+    const { data: me } = await supabase.from("profiles").select("username").eq("id", user.id).maybeSingle();
+    const badHandle = me ? await blockedHandle(me.username, user.id).catch(() => null) : null;
+    if (badHandle) {
+      return (
+        <div className="border-b border-amber-300/40 bg-amber-300/10 px-4 py-3 text-center text-sm text-amber-100">
+          {badHandle} <a href="/settings" className="font-semibold underline">Change it</a>
+        </div>
+      );
+    }
     // Jace is the only way to sign in: accounts from before that need a Jace account linked
     const { data: link } = await supabase.from("jace_links").select("jace_id").eq("user_id", user.id).maybeSingle();
     if (link) return null;

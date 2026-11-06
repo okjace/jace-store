@@ -56,15 +56,25 @@ export function textProblem(rules: AutomodRules, text: string, maxLinks = rules.
   return null;
 }
 
-/** A name (username, display name, project or collection title): blocked words and blocked usernames. */
+/** A name (display name, project or collection title, label): the blocked words. */
 export function nameProblem(rules: AutomodRules, name: string): Problem | null {
   if (!rules.enabled || !name) return null;
   const words = textProblem(rules, name.replace(/[_.-]/g, " "), 0);
-  if (words) return { matched: words.matched, message: "That name isn't allowed on Jace Store." };
-  const squashed = normalize(name.replace(/[_.-]/g, " ")).replace(/ /g, "");
+  return words ? { matched: words.matched, message: "That name isn't allowed on Jace Store." } : null;
+}
+
+/**
+ * A handle (@username), as Jace checks usernames: the blocked words (with _ . - read as spaces),
+ * and Jace's blocked-usernames list, which also matches inside the handle.
+ */
+export function handleProblem(rules: AutomodRules, handle: string): Problem | null {
+  if (!rules.enabled || !handle) return null;
+  const words = textProblem(rules, handle.replace(/[_.-]/g, " "), 0);
+  if (words) return { matched: words.matched, message: "That handle isn't allowed on Jace Store." };
+  const squashed = normalize(handle.replace(/[_.-]/g, " ")).replace(/ /g, "");
   for (const term of rules.blocked_usernames) {
     const t = normalize(term).replace(/ /g, "");
-    if (t && squashed.includes(t)) return { matched: term, message: "That name isn't allowed on Jace Store." };
+    if (t && squashed.includes(t)) return { matched: term, message: "That handle isn't allowed on Jace Store." };
   }
   return null;
 }

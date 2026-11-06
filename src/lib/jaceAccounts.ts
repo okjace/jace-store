@@ -1,11 +1,35 @@
 import { createAdminClient } from "./supabase/admin";
 import { jaceLoginEmail, type JaceUser } from "./jaceOAuth";
+import { automodRules } from "./jace";
+import { handleProblem } from "./automod";
 
 /**
  * The Jace Store account for a Jace account: the one it's linked to (jace_links), or a new one.
  * Used by "Sign in with Jace" in the browser and by the desktop app's Jace OS sign-in.
  */
 export async function jaceStoreUserFor(jace: JaceUser): Promise<string | null> {
+  const id = await findOrCreate(jace);
+  if (id) await fixBlockedHandle(id);
+  return id;
+}
+
+/** A new account's handle comes from Jace; if Jace Store's copy of Jace's rules blocks it, swap it. */
+async function fixBlockedHandle(userId: string) {
+  const admin = createAdminClient();
+  const [{ data: p }, rules] = await Promise.all([
+    admin.from("profiles").select("username, created_at").eq("id", userId).maybeSingle(),
+    automodRules(),
+  ]);
+  // only brand-new accounts: existing ones are asked to pick a new handle themselves (blockedHandle)
+  if (!p || Date.now() - new Date(p.created_at).getTime() > 120_000 || !handleProblem(rules, p.username)) return;
+  for (let i = 0; i < 5; i++) {
+    const candidate = `user${Math.floor(100000 + Math.random() * 900000)}`;
+    const { error } = await admin.from("profiles").update({ username: candidate }).eq("id", userId);
+    if (!error) return;
+  }
+}
+
+async function findOrCreate(jace: JaceUser): Promise<string | null> {
   const admin = createAdminClient();
   const { data: existing } = await admin.from("jace_links").select("user_id").eq("jace_id", jace.id).maybeSingle();
   if (existing) return existing.user_id;

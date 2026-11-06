@@ -9,9 +9,11 @@ export default async function Navbar() {
     data: { user },
   } = await supabase.auth.getUser();
   let username: string | null = null;
+  let displayName: string | null = null;
   if (user) {
-    const { data } = await supabase.from("profiles").select("username").eq("id", user.id).single();
+    const { data } = await supabase.from("profiles").select("username, display_name").eq("id", user.id).single();
     username = data?.username ?? null;
+    displayName = data?.display_name?.trim() || null;
   }
   const sections = GROUPS.filter((g) => g.id !== "other");
 
@@ -38,7 +40,9 @@ export default async function Navbar() {
           {user ? (
             <>
               <Link href="/new" className="btn-primary">Upload</Link>
-              <Link href="/dashboard" className="btn-ghost">{username ?? "Dashboard"}</Link>
+              <Link href="/dashboard" className="btn-ghost max-w-48 truncate" title={username ? `@${username}` : undefined}>
+                {displayName ?? username ?? "Dashboard"}
+              </Link>
             </>
           ) : (
             <Link href="/login" className="btn-primary">Sign in</Link>

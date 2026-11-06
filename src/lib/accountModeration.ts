@@ -8,7 +8,7 @@
  * Jace Store's moderators (public.admins) are never blocked or auto-muted.
  */
 import { ApiError } from "./apiAuth";
-import { nameProblem, textProblem, type Problem } from "./automod";
+import { handleProblem, nameProblem, textProblem, type Problem } from "./automod";
 import { automodRules, jaceModerationStatus, type AutomodRules } from "./jace";
 import { isAdmin } from "./moderation";
 import { createAdminClient } from "./supabase/admin";
@@ -107,10 +107,23 @@ export function restriction(s: ModState | null): { kind: "banned" | "muted"; mes
   return null;
 }
 
-/** Throws if the account is banned or muted. */
-export async function requireCanPost(userId: string) {
-  const r = restriction(await currentState(userId));
+/** Throws if the account is banned or muted, or its handle isn't allowed (until it's changed). */
+export async function requireCanPost(userId: string, changingHandle = false) {
+  const s = await currentState(userId);
+  const r = restriction(s);
   if (r) throw new ApiError(403, r.message);
+  if (s && !changingHandle) {
+    const bad = await blockedHandle(s.username, userId);
+    if (bad) throw new ApiError(403, bad);
+  }
+}
+
+/** If this handle breaks Jace's username rules: the message to show (Jace Store moderators are exempt). */
+export async function blockedHandle(handle: string, userId: string): Promise<string | null> {
+  const rules = await automodRules();
+  if (!rules.enabled || !handle || !handleProblem(rules, handle)) return null;
+  if (await isAdmin(userId)) return null;
+  return `Your handle @${handle} isn't allowed on Jace Store any more (Jace's username rules). Pick a new one in Settings → Profile to post again.`;
 }
 
 export interface Content {
@@ -118,8 +131,10 @@ export interface Content {
   texts?: (string | null | undefined)[];
   /** Comments: blocked words and Jace's link limit. */
   messages?: (string | null | undefined)[];
-  /** Names: titles, usernames, display names (blocked words and blocked usernames). */
+  /** Names: titles, display names, labels (blocked words). */
   names?: (string | null | undefined)[];
+  /** A new handle (@username): blocked words and Jace's blocked-usernames list. */
+  handle?: string | null;
   /** New pictures: "post" (project icons, screenshots) or "profile" (profile picture). */
   image?: "post" | "profile" | null;
 }
@@ -129,7 +144,7 @@ export interface Content {
  * moderation. A refused post is logged; enough of them in 24 hours mutes the account.
  */
 export async function guardPost(userId: string, area: string, content: Content = {}) {
-  await requireCanPost(userId);
+  await requireCanPost(userId, !!content.handle);
   const rules = await automodRules();
   if (!rules.enabled) return;
   const problem = findProblem(rules, content);
@@ -138,6 +153,10 @@ export async function guardPost(userId: string, area: string, content: Content =
 }
 
 function findProblem(rules: AutomodRules, c: Content): (Problem & { excerpt: string }) | null {
+  if (c.handle) {
+    const p = handleProblem(rules, c.handle);
+    if (p) return { ...p, excerpt: c.handle };
+  }
   for (const n of c.names ?? []) {
     const p = n && nameProblem(rules, n);
     if (p) return { ...p, excerpt: n! };

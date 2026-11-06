@@ -24,7 +24,7 @@ export const PATCH = handler(async (req) => {
     newPicture = !!b.avatar_url;
   }
   if (!Object.keys(patch).length) throw new ApiError(400, "Nothing to update");
-  await guardPost(userId, "profile", { names: [patch.username, patch.display_name], texts: [patch.bio], image: newPicture ? "profile" : null });
+  await guardPost(userId, "profile", { handle: patch.username, names: [patch.display_name], texts: [patch.bio], image: newPicture ? "profile" : null });
   const { data, error } = await admin.from("profiles").update(patch).eq("id", userId).select("username, display_name, bio, avatar_url").single();
   if (error) throw new ApiError(400, error.code === "23505" ? "That username is taken." : error.message);
   return data;
