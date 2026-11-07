@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatBytes, typeInfo, versionsFor } from "@/lib/constants";
-import { detectMeta, hashFile, safeFilename, uploadToBucket } from "@/lib/upload";
+import { detectMeta, hashFile } from "@/lib/upload";
 import type { Project } from "@/lib/types";
 import type { Dependency } from "@/lib/dependencyTypes";
 import DependencyPicker, { cleanDeps } from "./DependencyPicker";
@@ -11,7 +11,7 @@ import { DESKTOP_TYPES, INSTALL_MODES, type InstallMode } from "@/lib/fileFormat
 
 const MAX_BYTES = 500 * 1024 * 1024;
 
-export default function VersionUploader({ project, userId }: { project: Project; userId: string }) {
+export default function VersionUploader({ project }: { project: Project; userId?: string }) {
   const router = useRouter();
   const info = typeInfo(project.type);
   const [files, setFiles] = useState<File[]>([]);
@@ -84,11 +84,21 @@ export default function VersionUploader({ project, userId }: { project: Project;
         setStatus(`Hashing ${f.name}…`);
         const { sha1, sha512 } = await hashFile(f);
         setStatus(`Uploading ${f.name} (${formatBytes(f.size)})…`);
-        const path = `${userId}/${project.id}/${vid}/${safeFilename(f.name)}`;
-        await uploadToBucket(supabase, "project-files", path, f);
-        uploadedPaths.push(path);
+        // the server picks the storage (Cloudflare R2 while Jace Store's share has room, else Supabase)
+        const target = await api(`/api/cli/versions/${vid}/upload-url`, "POST", { filename: f.name, size: f.size });
+        if (target.provider === "r2") {
+          const put = await fetch(target.upload_url, { method: "PUT", body: f });
+          if (!put.ok) throw new Error(`Uploading ${f.name} failed (${put.status})`);
+        } else {
+          const token = new URL(target.upload_url).searchParams.get("token") ?? "";
+          const { error: upErr } = await supabase.storage.from("project-files").uploadToSignedUrl(target.path, token, f, {
+            contentType: f.type || "application/octet-stream",
+          });
+          if (upErr) throw new Error(`Uploading ${f.name} failed: ${upErr.message}`);
+          uploadedPaths.push(target.path);
+        }
         await api(`/api/cli/versions/${vid}/files`, "POST", {
-          kind: "upload", path, filename: f.name, sha1, sha512, size: f.size, primary: i === 0,
+          kind: "upload", path: target.path, provider: target.provider, filename: f.name, sha1, sha512, size: f.size, primary: i === 0,
           ...(desktop ? { install_mode: installMode } : {}),
         });
       }

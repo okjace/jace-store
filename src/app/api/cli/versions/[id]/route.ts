@@ -1,3 +1,4 @@
+import { removeStored } from "@/lib/fileStorage";
 import { guardPost } from "@/lib/accountModeration";
 import { ApiError, handler, ownedVersion, readJson, requireApiUser } from "@/lib/apiAuth";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -37,9 +38,8 @@ export const DELETE = handler(async (req, { params }: Ctx) => {
   const userId = await requireApiUser(req);
   const v = await ownedVersion(userId, (await params).id);
   const admin = createAdminClient();
-  const { data: files } = await admin.from("files").select("storage_path").eq("version_id", v.id);
+  const { data: files } = await admin.from("files").select("*").eq("version_id", v.id);
   await admin.from("versions").delete().eq("id", v.id);
-  const paths = (files ?? []).map((f) => f.storage_path).filter(Boolean) as string[];
-  if (paths.length) await admin.storage.from("project-files").remove(paths);
+  await removeStored(files ?? []);
   return { deleted: v.id };
 });

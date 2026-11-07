@@ -1,3 +1,4 @@
+import { r2Usage } from "@/lib/fileStorage";
 import { automodState } from "@/lib/jace";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -39,6 +40,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const data = await query(true);
   const closed = showClosed ? await query(false) : null;
   const jace = await automodState();
+  const r2 = await r2Usage().catch(() => null);
 
   // Group open reports by project (or by comment) so each thing is reviewed once.
   const groups = new Map<string, Row[]>();
@@ -59,6 +61,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
             Jace auto moderation: {jace.source === "jace"
               ? (jace.rules.enabled ? `on (${jace.rules.blocked_terms.length} blocked words${jace.rules.auto_mute_after ? `, auto-mute after ${jace.rules.auto_mute_after} blocked posts` : ""})` : "connected, turned off on Jace")
               : `not connected: ${jace.note}`}
+          </p>
+          <p className="text-xs text-muted">
+            Cloudflare R2: {r2?.configured
+              ? `${(r2.bytes / 1024 ** 3).toFixed(2)} of ${(r2.cap / 1024 ** 3).toFixed(1)} GB used by Jace Store${r2.bytes >= r2.cap ? " (full: new uploads go to Supabase)" : ""}`
+              : "not set up (uploads go to Supabase)"}
           </p>
         </div>
         <Link href={showClosed ? "/admin/reports" : "/admin/reports?show=closed"} className="btn-ghost">

@@ -1,3 +1,4 @@
+import { removeStored } from "@/lib/fileStorage";
 import { ApiError, handler, readJson } from "@/lib/apiAuth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -41,10 +42,11 @@ export const POST = handler(async (req) => {
 
   // Uploaded files: everything in the user's folders, plus anything the files
   // table points at (covers files uploaded through the CLI).
-  const { data: projects } = await admin.from("projects").select("id, versions!versions_project_id_fkey(files(storage_path))").eq("owner_id", user.id);
-  const tracked = (projects ?? []).flatMap((p) =>
-    (p.versions as { files: { storage_path: string | null }[] }[]).flatMap((v) => v.files.map((f) => f.storage_path))
-  ).filter(Boolean) as string[];
+  const { data: projects } = await admin.from("projects").select("id, versions!versions_project_id_fkey(files(*))").eq("owner_id", user.id);
+  const rows = (projects ?? []).flatMap((p) =>
+    (p.versions as { files: { storage_path: string | null; storage?: string | null; size?: number | null }[] }[]).flatMap((v) => v.files));
+  await removeStored(rows.filter((f) => f.storage === "r2"));        // Cloudflare R2 files (and their space back)
+  const tracked = rows.filter((f) => f.storage !== "r2").map((f) => f.storage_path).filter(Boolean) as string[];
   const projectFiles = [...new Set([...tracked, ...(await listAll(admin, "project-files", user.id))])];
   const images = await listAll(admin, "icons", user.id);
   for (let i = 0; i < projectFiles.length; i += 500) await admin.storage.from("project-files").remove(projectFiles.slice(i, i + 500));

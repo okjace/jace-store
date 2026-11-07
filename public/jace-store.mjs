@@ -135,11 +135,13 @@ async function uploadFile(ctx, versionId, filePath, { label, primary, ...extra }
   log(`  hashing ${filename} (${fmtBytes(bytes.length)})`);
   const sha1 = createHash("sha1").update(bytes).digest("hex");
   const sha512 = createHash("sha512").update(bytes).digest("hex");
-  const { upload_url, path } = await api(ctx, "POST", `/versions/${versionId}/upload-url`, { filename });
-  log(`  uploading ${filename}`);
+  // the store picks where it goes: Cloudflare R2 while its share has room, else Supabase Storage
+  const { upload_url, path, provider = "supabase", headers = {} } =
+    await api(ctx, "POST", `/versions/${versionId}/upload-url`, { filename, size: bytes.length });
+  log(`  uploading ${filename}${provider === "r2" ? " (Cloudflare R2)" : ""}`);
   const put = await fetch(upload_url, {
     method: "PUT",
-    headers: { "Content-Type": "application/octet-stream", "x-upsert": "true" },
+    headers: { "Content-Type": "application/octet-stream", ...(provider === "r2" ? {} : { "x-upsert": "true" }), ...headers },
     body: bytes,
   });
   if (!put.ok) {
@@ -147,7 +149,7 @@ async function uploadFile(ctx, versionId, filePath, { label, primary, ...extra }
     throw new CliError(`Upload of ${filename} failed (${put.status}): ${msg.slice(0, 300)}`);
   }
   return api(ctx, "POST", `/versions/${versionId}/files`, {
-    kind: "upload", path, filename, sha1, sha512, size: bytes.length, label, primary, ...extra,
+    kind: "upload", path, provider, filename, sha1, sha512, size: bytes.length, label, primary, ...extra,
   });
 }
 
