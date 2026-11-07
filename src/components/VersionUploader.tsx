@@ -235,7 +235,7 @@ export default function VersionUploader({ project }: { project: Project; userId?
         </div>
       )}
 
-      {info.minecraft && <DependencyPicker value={deps} onChange={setDeps} idPrefix="new" />}
+      <DependencyPicker value={deps} onChange={setDeps} idPrefix="new" minecraft={!!info.minecraft} />
 
       <div>
         <label className="label" htmlFor="cl">Changelog (Markdown)</label>

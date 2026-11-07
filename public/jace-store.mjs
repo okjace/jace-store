@@ -32,7 +32,7 @@ Commands:
   publish <slug> --version <x.y.z> [--name n] [--channel release|beta|alpha]
          [--loaders a,b] [--game-versions 1.21.1,1.21] [--changelog text | --changelog-file f]
          [--file path]... [--link "url|label"]... [--primary-link]
-         [--depends modrinth:fabric-api,e4all,modrinth:sodium:optional]
+         [--depends modrinth:fabric-api,e4all,github:owner/repo,modrinth:sodium:optional]
          [--install-mode auto|install|open]  (apps/games: what the Jace Store app does with the files)
                                       Create a version. Uploaded files come first (the first is
                                       primary) unless --primary-link. Needs at least one file or link.
@@ -58,8 +58,9 @@ Global flags:
 Notes:
   - Minecraft projects need --game-versions (and usually --loaders).
   - --depends lists other projects this version needs: "slug" for Jace Store, "modrinth:slug"
-    for Modrinth, with an optional ":optional", ":incompatible" or ":embedded" (default required).
-    Launchers install required dependencies automatically.
+    for Modrinth, "github:owner/repo" (or a github.com link) for GitHub, with an optional
+    ":optional", ":incompatible" or ":embedded" (default required). Launchers install required
+    Jace Store and Modrinth dependencies automatically; GitHub ones are shown as links.
   - Links for Minecraft content must be direct downloads: the server fetches them once to
     compute SHA-1/SHA-512 so launchers can verify them. Other links are hashed when possible.
   - Free Supabase plans cap uploads at 50 MB per file; use --link for bigger files.

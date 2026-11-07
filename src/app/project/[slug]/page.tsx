@@ -259,7 +259,7 @@ function DepLink({ d }: { d: Dependency }) {
   const external = d.source !== "jace";
   return (
     <a href={dependencyUrl(d)} className="chip hover:text-text" {...(external ? { target: "_blank", rel: "noopener" } : {})}>
-      {d.project}{external ? " ↗" : ""}
+      {d.source === "github" ? `GitHub: ${d.project}` : d.project}{external ? " ↗" : ""}
     </a>
   );
 }

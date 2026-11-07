@@ -85,7 +85,7 @@ export default function VersionEditor({
           </div>
         </div>
       )}
-      {info.minecraft && <DependencyPicker value={deps} onChange={setDeps} idPrefix={version.id} />}
+      <DependencyPicker value={deps} onChange={setDeps} idPrefix={version.id} minecraft={!!info.minecraft} />
       <div>
         <label className="label" htmlFor={`cl-${version.id}`}>Changelog (Markdown)</label>
         <textarea id={`cl-${version.id}`} rows={4} className="input font-mono" value={changelog} onChange={(e) => setChangelog(e.target.value)} />
