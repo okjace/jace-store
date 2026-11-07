@@ -3,6 +3,8 @@ import { guardPost } from "@/lib/accountModeration";
 import { ApiError, handler, ownedVersion, readJson, requireApiUser } from "@/lib/apiAuth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { parseDependencies } from "@/lib/dependencies";
+import { applyAutoDependenciesQuietly } from "@/lib/depResolve";
+import type { Dependency } from "@/lib/dependencyTypes";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -25,11 +27,19 @@ export const PATCH = handler(async (req, { params }: Ctx) => {
   }
   if (Array.isArray(b.loaders)) patch.loaders = b.loaders.map(String);
   if (Array.isArray(b.game_versions)) patch.game_versions = b.game_versions.map(String);
-  if ("dependencies" in b) patch.dependencies = parseDependencies(b.dependencies);
+  if ("dependencies" in b) {
+    // the version's own ones; the ones for every version are kept and matched again below
+    patch.dependencies = [...parseDependencies(b.dependencies), ...((v.dependencies ?? []) as Dependency[]).filter((d) => d.auto)];
+  }
   if (!Object.keys(patch).length) throw new ApiError(400, "Nothing to update");
   await guardPost(userId, "version", { names: [patch.name as string, patch.version_number as string], texts: [patch.changelog as string] });
   const { data, error } = await createAdminClient().from("versions").update(patch).eq("id", v.id).select().single();
   if (error) throw new ApiError(400, error.code === "23505" ? "Another version already has that number" : error.message);
+  if ("loaders" in patch || "game_versions" in patch || "dependencies" in patch) {
+    await applyAutoDependenciesQuietly(v.project.id, [v.id]);
+    const { data: again } = await createAdminClient().from("versions").select("*").eq("id", v.id).maybeSingle();
+    if (again) return again;
+  }
   return data;
 });
 

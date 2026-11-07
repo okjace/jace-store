@@ -6,6 +6,8 @@ import ProjectForm from "@/components/ProjectForm";
 import VersionUploader from "@/components/VersionUploader";
 import ManageVersions from "@/components/ManageVersions";
 import DownloadSettings from "@/components/DownloadSettings";
+import ProjectDependencies from "@/components/ProjectDependencies";
+import { typeInfo } from "@/lib/constants";
 
 export const metadata = { title: "Manage project" };
 
@@ -34,6 +36,7 @@ export default async function EditProject({
       <nav className="flex flex-wrap gap-2 text-sm">
         <a href="#upload" className="chip hover:text-text">Upload version</a>
         <a href="#versions" className="chip hover:text-text">Versions</a>
+        {typeInfo(project.type).minecraft && <a href="#dependencies" className="chip hover:text-text">Dependencies</a>}
         <a href="#download" className="chip hover:text-text">Download button</a>
         <a href="#settings" className="chip hover:text-text">Project settings</a>
       </nav>
@@ -41,6 +44,11 @@ export default async function EditProject({
       <div id="versions" className="scroll-mt-24">
         <ManageVersions project={project as Project} versions={(versions ?? []) as Version[]} />
       </div>
+      {typeInfo(project.type).minecraft && (
+        <div id="dependencies" className="scroll-mt-24">
+          <ProjectDependencies project={project as Project} versions={(versions ?? []) as Version[]} />
+        </div>
+      )}
       <div id="download" className="scroll-mt-24">
         <DownloadSettings project={project as Project} versions={(versions ?? []) as Version[]} />
       </div>

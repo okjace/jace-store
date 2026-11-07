@@ -44,6 +44,10 @@ Commands:
                                       What the Download button does: newest version, a list of all
                                       versions, or always one primary version
   set-primary <slug> <versionId>      Shortcut for: download-mode <slug> primary --version <id>
+  deps <slug> [--set modrinth:fabric-api,curseforge:jei:optional | --set none] [--refresh]
+                                      Dependencies for every version (Minecraft): each version, now
+                                      and later, gets the release of each mod that fits its Minecraft
+                                      versions and loaders. --refresh matches newer releases again.
   edit-file <fileId> [--label l] [--filename f] [--primary] [install options]
                                       install options (apps/games, for the Jace Store desktop app):
                                         --install-mode auto|install|open   install it, or download and open it
@@ -58,9 +62,11 @@ Global flags:
 Notes:
   - Minecraft projects need --game-versions (and usually --loaders).
   - --depends lists other projects this version needs: "slug" for Jace Store, "modrinth:slug"
-    for Modrinth, "github:owner/repo" (or a github.com link) for GitHub, with an optional
+    for Modrinth, "curseforge:slug" for CurseForge, "github:owner/repo" for GitHub (or the
+    project's link), with an optional
     ":optional", ":incompatible" or ":embedded" (default required). Launchers install required
-    Jace Store and Modrinth dependencies automatically; GitHub ones are shown as links.
+    Jace Store and Modrinth dependencies automatically; GitHub ones are shown as links. For a mod
+    every version needs, use "deps" instead: it picks the right release for each version.
   - Links for Minecraft content must be direct downloads: the server fetches them once to
     compute SHA-1/SHA-512 so launchers can verify them. Other links are hashed when possible.
   - Free Supabase plans cap uploads at 50 MB per file; use --link for bigger files.
@@ -73,7 +79,7 @@ function parseArgs(argv) {
   const pos = [];
   const flags = {};
   const multi = new Set(["file", "link"]);
-  const bool = new Set(["json", "primary", "primary-link", "skip-hash", "help"]);
+  const bool = new Set(["json", "primary", "primary-link", "skip-hash", "help", "refresh"]);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (!a.startsWith("--")) { pos.push(a); continue; }
@@ -334,6 +340,24 @@ async function main() {
       const slug = need(pos[0], "<slug>");
       const body = { download_mode: "primary", primary_version_id: need(pos[1], "<versionId>") };
       out(await api(ctx, "PATCH", `/projects/${encodeURIComponent(slug)}`, body), (d) => `Primary version of ${d.slug} set`);
+      return;
+    }
+
+    case "deps": {
+      const slug = encodeURIComponent(need(pos[0], "<slug>"));
+      let deps;
+      if (flags.set) deps = flags.set === "none" ? [] : list(flags.set);
+      else if (flags.refresh) deps = (await api(ctx, "GET", `/projects/${slug}/dependencies`)).dependencies;
+      if (!deps) {
+        out(await api(ctx, "GET", `/projects/${slug}/dependencies`), (d) => d.dependencies.length
+          ? d.dependencies.map((x) => `${x.source}:${x.project}  ${x.title} (${x.type})`).join("\n")
+          : "No dependencies for every version");
+        return;
+      }
+      out(await api(ctx, "PUT", `/projects/${slug}/dependencies`, { dependencies: deps }), (d) => [
+        `Dependencies for every version: ${d.dependencies.map((x) => x.title).join(", ") || "none"}`,
+        ...d.versions.map((v) => `  ${v.version_number}: ${v.dependencies.map((x) => `${x.project} ${x.version ?? "(no matching release)"}`).join(", ") || "-"}`),
+      ].join("\n"));
       return;
     }
 

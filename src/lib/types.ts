@@ -11,6 +11,8 @@ export interface Profile {
 
 export interface Project {
   id: string;
+  /** Dependencies for every version (migration 013; see lib/depResolve.ts). */
+  auto_dependencies?: import("./dependencyTypes").AutoDependency[];
   slug: string;
   owner_id: string;
   type: ProjectType;

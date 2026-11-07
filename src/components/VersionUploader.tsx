@@ -236,6 +236,12 @@ export default function VersionUploader({ project }: { project: Project; userId?
       )}
 
       <DependencyPicker value={deps} onChange={setDeps} idPrefix="new" minecraft={!!info.minecraft} />
+      {(project.auto_dependencies ?? []).length > 0 && (
+        <p className="-mt-2 text-xs text-muted">
+          The dependencies for every version ({project.auto_dependencies!.map((d) => d.title).join(", ")}) are added
+          automatically, matched to the Minecraft versions you pick.
+        </p>
+      )}
 
       <div>
         <label className="label" htmlFor="cl">Changelog (Markdown)</label>

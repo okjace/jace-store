@@ -1,20 +1,21 @@
 "use client";
 import { useEffect, useState } from "react";
-import { DEP_TYPES, SLUG, githubRepo, type Dependency } from "@/lib/dependencyTypes";
+import { DEP_TYPES, SLUG, githubRepo, linkedProject, type Dependency } from "@/lib/dependencyTypes";
 
 const SOURCES: { id: Dependency["source"]; label: string }[] = [
   { id: "modrinth", label: "Modrinth" },
+  { id: "curseforge", label: "CurseForge" },
   { id: "jace", label: "Jace Store" },
   { id: "github", label: "GitHub" },
 ];
-const TYPE_LABELS: Record<Dependency["type"], string> = {
+export const TYPE_LABELS: Record<Dependency["type"], string> = {
   required: "Required",
   optional: "Optional",
   incompatible: "Incompatible",
   embedded: "Embedded",
 };
 
-/** Edit a version's dependencies: other projects (on Jace Store, Modrinth or GitHub) it needs. */
+/** Edit a version's dependencies: other projects (on Jace Store, Modrinth, CurseForge or GitHub) it needs. */
 export default function DependencyPicker({
   value, onChange, idPrefix, minecraft = false,
 }: {
@@ -31,7 +32,7 @@ export default function DependencyPicker({
       <p className="mb-2 text-xs text-muted">
         Other projects this version needs.{minecraft && " Launchers install required Jace Store and Modrinth ones automatically."} Use
         the project&apos;s slug, the last part of its link (e.g. <code>fabric-api</code> from modrinth.com/mod/fabric-api), or for
-        GitHub the repository (<code>owner/repo</code>, or paste its link).
+        GitHub the repository (<code>owner/repo</code>). You can also paste the project&apos;s link.
       </p>
       <div className="space-y-2">
         {value.map((d, i) => (
@@ -48,9 +49,11 @@ export default function DependencyPicker({
               value={d.project} maxLength={d.source === "github" ? 200 : 64}
               onChange={(e) => {
                 const v = e.target.value.trim();
-                // a pasted GitHub link switches the row to GitHub
+                // a pasted GitHub / Modrinth / CurseForge link switches the row to that site
                 const repo = /github\.com\//i.test(v) ? githubRepo(v) : null;
                 if (repo) return set(i, { source: "github", project: repo });
+                const linked = linkedProject(v);
+                if (linked) return set(i, linked);
                 set(i, { project: d.source === "github" ? v : v.toLowerCase() });
               }}
               onBlur={() => { if (d.source === "github") { const r = githubRepo(d.project); if (r) set(i, { project: r }); } }} />
@@ -85,11 +88,15 @@ function Lookup({ dep }: { dep: Dependency }) {
         ? `https://api.github.com/repos/${repo}`
         : dep.source === "modrinth"
           ? `https://api.modrinth.com/v2/project/${encodeURIComponent(dep.project)}`
-          : `/api/launcher/v1/project/${encodeURIComponent(dep.project)}`;
+          : dep.source === "curseforge"
+            ? `/api/deps/lookup?source=curseforge&project=${encodeURIComponent(dep.project)}`
+            : `/api/launcher/v1/project/${encodeURIComponent(dep.project)}`;
       try {
         const r = await fetch(url, { signal: ctrl.signal });
         // GitHub allows 60 lookups an hour without signing in: if it's busy, say nothing
         if (dep.source === "github" && (r.status === 403 || r.status === 429)) return;
+        // CurseForge not set up on this site / didn't answer: say nothing
+        if (dep.source === "curseforge" && r.status >= 500) return;
         const d = r.ok ? await r.json() : null;
         setState({ key, title: (dep.source === "github" ? d?.full_name : d?.title) ?? null });
       } catch {

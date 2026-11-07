@@ -19,7 +19,9 @@ export default function VersionEditor({
   const [loaders, setLoaders] = useState(version.loaders);
   const [gameVersions, setGameVersions] = useState(version.game_versions);
   const [changelog, setChangelog] = useState(version.changelog);
-  const [deps, setDeps] = useState(version.dependencies ?? []);
+  // the ones for every version are managed on the project (see ProjectDependencies)
+  const [deps, setDeps] = useState((version.dependencies ?? []).filter((d) => !d.auto));
+  const autoDeps = (version.dependencies ?? []).filter((d) => d.auto);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const toggle = (list: string[], set: (v: string[]) => void, v: string) =>
@@ -86,6 +88,13 @@ export default function VersionEditor({
         </div>
       )}
       <DependencyPicker value={deps} onChange={setDeps} idPrefix={version.id} minecraft={!!info.minecraft} />
+      {autoDeps.length > 0 && (
+        <p className="text-xs text-muted">
+          Plus the dependencies for every version:{" "}
+          {autoDeps.map((d) => `${d.project} ${d.version_name ?? "(no matching release)"}`).join(", ")}. They&apos;re matched
+          again when you save.
+        </p>
+      )}
       <div>
         <label className="label" htmlFor={`cl-${version.id}`}>Changelog (Markdown)</label>
         <textarea id={`cl-${version.id}`} rows={4} className="input font-mono" value={changelog} onChange={(e) => setChangelog(e.target.value)} />

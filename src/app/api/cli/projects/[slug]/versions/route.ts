@@ -2,6 +2,7 @@ import { guardPost } from "@/lib/accountModeration";
 import { ApiError, handler, ownedProject, readJson, requireApiUser } from "@/lib/apiAuth";
 import { addLinkFile, type LinkInput } from "@/lib/linkFiles";
 import { parseDependencies } from "@/lib/dependencies";
+import { applyAutoDependenciesQuietly } from "@/lib/depResolve";
 import { fileOut } from "@/lib/cliSerialize";
 import { siteUrl, typeInfo } from "@/lib/constants";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -56,6 +57,12 @@ export const POST = handler(async (req, { params }: { params: Promise<{ slug: st
   } catch (e) {
     await admin.from("versions").delete().eq("id", version.id);
     throw e;
+  }
+  // the project's dependencies for every version, matched to this version's Minecraft versions
+  if ((project.auto_dependencies ?? []).length) {
+    await applyAutoDependenciesQuietly(project.id, [version.id]);
+    const { data } = await admin.from("versions").select("dependencies").eq("id", version.id).maybeSingle();
+    if (data) version.dependencies = data.dependencies;
   }
   return { ...version, files, page_url: `${siteUrl()}/project/${project.slug}` };
 });
