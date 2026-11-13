@@ -1,5 +1,14 @@
 # Jace Store desktop: changelog
 
+## 1.5.0
+- My apps: "Add all apps on this computer" now keeps syncing. Apps you install afterwards show up in
+  My apps by themselves within a few seconds, apps you uninstall go away, and renamed apps or new icons
+  are picked up. Your own names, descriptions and logos are never overwritten.
+- Apps you delete from My apps stay deleted (syncing won't bring them back). "Add all apps on this
+  computer" again brings everything back.
+- Turn syncing on or off in Settings → My apps, or with "Stop syncing with this computer" on the
+  My apps page (it can also remove the apps it added).
+
 ## 1.4.0
 - Sign in to Jace Store from the app: your name and picture at the bottom of the sidebar, and a
   Sign in / Sign out section in Settings. Signed in, you can like projects from their page.

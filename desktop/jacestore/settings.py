@@ -3,7 +3,9 @@ import json
 
 from jacestore.paths import data_dir
 
-DEFAULTS = {"channel": "release", "check_self_updates": True, "all_platforms": False, "flathub_links": True, "jace_os_signin": True}
+DEFAULTS = {"channel": "release", "check_self_updates": True, "all_platforms": False, "flathub_links": True, "jace_os_signin": True,
+            # My apps keeps up with the apps on this computer (turned on by "Add all apps on this computer")
+            "sync_system_apps": False}
 
 
 def load() -> dict:

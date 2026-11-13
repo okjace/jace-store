@@ -68,11 +68,16 @@ def update(app_id: str, **changes) -> dict | None:
     return None
 
 
-def remove(app_id: str):
+def remove(app_id: str, hide: bool = False):
+    """hide: the user deleted it, so syncing with this computer won't add it back."""
     with _lock:
         apps = load()
         gone = [a for a in apps if a["id"] == app_id]
         _save([a for a in apps if a["id"] != app_id])
+    if hide:
+        for a in gone:
+            if a.get("origin") == "system" and a.get("system_id"):
+                _set_hidden(_hidden() | {a["system_id"]})
     for a in gone:
         if a.get("icon") and Path(a["icon"]).parent == icons_dir():
             Path(a["icon"]).unlink(missing_ok=True)
@@ -222,18 +227,100 @@ def scan_system() -> list[dict]:
     return sorted(found, key=lambda a: a["name"].lower())
 
 
-def import_system(entries: list[dict]) -> int:
-    """Add scanned apps that aren't in the library yet. Returns how many were added."""
+def _hidden_file() -> Path:
+    return data_dir() / "library-hidden.json"
+
+
+def _hidden() -> set[str]:
+    """Apps from this computer that the user deleted from My apps (syncing leaves them out)."""
+    try:
+        return set(json.loads(_hidden_file().read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return set()
+
+
+def _set_hidden(ids: set[str]):
+    _hidden_file().write_text(json.dumps(sorted(ids)), encoding="utf-8")
+
+
+def _jace_store_desktop_files() -> set[str]:
     from jacestore import installed
-    have = {a.get("system_id") for a in load()}
-    ours = {Path(p).name for r in installed.load().values() for p in [r.get("desktop_file") or ""] if p}
-    added = 0
-    for e in entries:
-        if e["system_id"] in have or e["system_id"] in ours:
-            continue
-        add(e["name"], e["target"], e["kind"], e.get("icon"), "", e.get("notes", ""), "system", e["system_id"])
-        added += 1
-    return added
+    return {Path(p).name for r in installed.load().values() for p in [r.get("desktop_file") or ""] if p}
+
+
+def import_system(entries: list[dict]) -> int:
+    """"Add all apps on this computer": add every scanned app (also ones deleted before), and keep
+    syncing from now on. Returns how many were added."""
+    from jacestore import settings
+    _set_hidden(set())
+    settings.save(sync_system_apps=True)
+    return sync_system(entries)["added"]
+
+
+def stop_syncing_system(delete: bool):
+    """Stop keeping My apps in sync with this computer (and optionally delete what it added)."""
+    from jacestore import settings
+    settings.save(sync_system_apps=False)
+    if delete:
+        with _lock:
+            _save([a for a in load() if a.get("origin") != "system"])
+
+
+def sync_system(entries: list[dict] | None = None) -> dict:
+    """Bring My apps up to date with the apps on this computer: add new ones, drop ones that were
+    uninstalled, and pick up new names, descriptions and icons (never over your own logo or name).
+    -> {"added": n, "removed": n, "updated": n}"""
+    entries = scan_system() if entries is None else entries
+    found = {e["system_id"]: e for e in entries}
+    skip = _hidden() | _jace_store_desktop_files()
+    added = removed = updated = 0
+    with _lock:
+        apps = load()
+        have = {a.get("system_id") for a in apps}
+        kept = []
+        for a in apps:
+            if a.get("origin") != "system":
+                kept.append(a)
+                continue
+            e = found.get(a.get("system_id"))
+            if not e or a.get("system_id") in skip:
+                removed += 1                                  # uninstalled (or now installed through Jace Store)
+                if a.get("icon") and Path(a["icon"]).parent == icons_dir():
+                    Path(a["icon"]).unlink(missing_ok=True)
+                continue
+            fresh = {"target": e["target"], "kind": e["kind"]}
+            if not a.get("custom_name"):
+                fresh["name"] = e["name"]
+            if not a.get("custom_notes"):
+                fresh["notes"] = e.get("notes", "")
+            if not a.get("custom_icon") and e.get("icon"):
+                fresh["icon"] = e["icon"]
+            if any(a.get(k) != v for k, v in fresh.items()):
+                a.update(fresh)
+                updated += 1
+            kept.append(a)
+        for sid, e in found.items():
+            if sid in have or sid in skip:
+                continue
+            kept.append({"id": uuid.uuid4().hex[:12], "name": e["name"].strip() or "App", "kind": e["kind"], "target": e["target"],
+                         "args": "", "icon": e.get("icon"), "website": "", "notes": e.get("notes", ""), "origin": "system",
+                         "system_id": sid, "added_at": time.time()})
+            added += 1
+        if added or removed or updated:
+            _save(kept)
+    return {"added": added, "removed": removed, "updated": updated}
+
+
+def watch_dirs() -> list[str]:
+    """Folders where apps appear, to notice installs and uninstalls right away."""
+    if sys.platform.startswith("linux"):
+        return [str(d) for d in _desktop_dirs()]
+    if sys.platform == "darwin":
+        return [str(p) for p in (Path("/Applications"), Path.home() / "Applications") if p.is_dir()]
+    if sys.platform == "win32":
+        return [str(p) for p in (Path(os.environ.get("APPDATA", "")) / "Microsoft/Windows/Start Menu/Programs",
+                                 Path(os.environ.get("PROGRAMDATA", "C:/ProgramData")) / "Microsoft/Windows/Start Menu/Programs") if p.is_dir()]
+    return []
 
 
 # --- uninstalling the program itself -------------------------------------------------------------------------

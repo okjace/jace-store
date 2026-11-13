@@ -1,7 +1,7 @@
 """The Jace Store window: Discover, Search, project pages, My apps, Updates, Settings."""
 import webbrowser
 
-from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QFileSystemWatcher, QPoint, QRect, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QIcon, QPixmap
 from PySide6.QtCore import QFileInfo
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFileDialog, QFileIconProvider, QFrame, QGridLayout, QHBoxLayout, QLabel, QLayout, QLineEdit, QMenu,
@@ -1115,7 +1115,7 @@ class AppDialog(QDialog):
     def _delete(self):
         if QMessageBox.question(self, APP_NAME, f"Delete {self.app['name']} from My apps?\n\n"
                                 "This only removes it from your list (and its custom logo); the program itself isn't uninstalled.") == QMessageBox.Yes:
-            library.remove(self.app["id"])
+            library.remove(self.app["id"], hide=True)
             self.deleted = True
             self.accept()
 
@@ -1157,6 +1157,9 @@ class AppDialog(QDialog):
         fields = {"name": name, "kind": kind, "target": target, "args": self.args.text().strip(),
                   "website": self.website.text().strip(), "notes": self.notes.toPlainText().strip()}
         if self.app.get("id"):
+            if self.app.get("origin") == "system":       # syncing keeps your own name and description
+                fields["custom_name"] = self.app.get("custom_name") or name != self.app.get("name")
+                fields["custom_notes"] = self.app.get("custom_notes") or fields["notes"] != (self.app.get("notes") or "")
             library.update(self.app["id"], **fields)
             app_id = self.app["id"]
         else:
@@ -1250,10 +1253,11 @@ class MyAppsPage(Page):
         self.filter.textChanged.connect(self._render)
         add = button("Add an app", primary=True)
         add.clicked.connect(lambda: self.win.add_to_library())
-        scan = button("Add all apps on this computer")
+        self.scan_btn = scan = button("Add all apps on this computer")
+        scan.setToolTip("Adds every app on this computer and keeps My apps in sync: apps you install show up, apps you uninstall go away")
         scan.clicked.connect(self.scan)
-        self.clear_scanned = button("Delete the ones added from this computer")
-        self.clear_scanned.setToolTip("Removes every app that \"Add all apps on this computer\" added (your own stay)")
+        self.clear_scanned = button("Stop syncing with this computer")
+        self.clear_scanned.setToolTip("Stops syncing and removes the apps that came from this computer (your own stay)")
         self.clear_scanned.clicked.connect(self.remove_scanned)
         bar.addWidget(self.filter, 1)
         bar.addWidget(add)
@@ -1270,6 +1274,7 @@ class MyAppsPage(Page):
 
     def shown(self):
         self._render()
+        self.win.sync_system_apps()
 
     def _render(self):
         clear(self.flow)
@@ -1282,7 +1287,11 @@ class MyAppsPage(Page):
         shown = [a for a in apps if not f or f in a["name"].lower() or f in (a.get("notes") or "").lower()]
         self.status.setText(f"{len(apps)} apps" + (f", {len(shown)} shown" if f else "") if apps
                             else "Nothing here yet: add an app, or let Jace Store add every app on this computer.")
-        self.clear_scanned.setVisible(any(a.get("origin") == "system" for a in apps))
+        syncing = settings.load().get("sync_system_apps")
+        self.clear_scanned.setVisible(bool(syncing) or any(a.get("origin") == "system" for a in apps))
+        self.scan_btn.setText("Sync with this computer now" if syncing else "Add all apps on this computer")
+        if syncing and not f and apps:
+            self.status.setText(self.status.text() + " · kept in sync with the apps on this computer")
         for a in shown:
             self.flow.addWidget(AppTile(a, self))
 
@@ -1305,7 +1314,7 @@ class MyAppsPage(Page):
     def remove(self, app):
         if QMessageBox.question(self, APP_NAME, f"Delete {app['name']} from My apps?\n\n"
                                 "This only removes it from your list (and its custom logo); the program itself isn't uninstalled.") == QMessageBox.Yes:
-            library.remove(app["id"])
+            library.remove(app["id"], hide=True)
             self._render()
 
     def uninstall(self, app):
@@ -1345,21 +1354,40 @@ class MyAppsPage(Page):
 
     def remove_scanned(self):
         scanned = [a for a in library.load() if a.get("origin") == "system"]
-        if QMessageBox.question(self, APP_NAME, f"Delete the {len(scanned)} apps that were added from this computer?\n\n"
-                                "Apps you added yourself stay. Nothing gets uninstalled.") != QMessageBox.Yes:
+        box = QMessageBox(QMessageBox.Question, APP_NAME, "Stop keeping My apps in sync with the apps on this computer?",
+                          parent=self)
+        box.setInformativeText(f"You can also delete the {len(scanned)} apps it added. Apps you added yourself stay, and nothing "
+                               "gets uninstalled." if scanned else "")
+        delete = box.addButton(f"Stop and delete {len(scanned)} apps", QMessageBox.DestructiveRole) if scanned else None
+        keep = box.addButton("Stop, keep them" if scanned else "Stop syncing", QMessageBox.AcceptRole)
+        box.addButton(QMessageBox.Cancel)
+        box.exec()
+        if box.clickedButton() not in (delete, keep) or box.clickedButton() is None:
             return
-        for a in scanned:
-            library.remove(a["id"])
+        library.stop_syncing_system(delete=box.clickedButton() is delete)
+        self.win.refresh_app_watcher()
         self._render()
 
     def scan(self):
         self.status.setText("Looking for apps on this computer…")
+        syncing = settings.load().get("sync_system_apps")
 
         def done(found):
-            n = library.import_system(found)
-            self.status.setText(f"Added {n} app{'s' if n != 1 else ''}." if n else "Every app on this computer is already here.")
+            if syncing:
+                text = _sync_text(library.sync_system(found)) or "My apps already matches this computer."
+            else:
+                n = library.import_system(found)
+                text = ((f"Added {n} app{'s' if n != 1 else ''}." if n else "Every app on this computer is already here.")
+                        + " From now on, apps you install or uninstall show up here by themselves.")
+                self.win.refresh_app_watcher()
             self._render()
+            self.status.setText(text)
         run_async(lambda ctx: library.scan_system(), done, lambda e: self.status.setText(f"Couldn't look for apps: {e}"))
+
+
+def _sync_text(r: dict) -> str:
+    parts = [f"{r[k]} {w}" for k, w in (("added", "added"), ("removed", "removed"), ("updated", "updated")) if r.get(k)]
+    return ("Synced with this computer: " + ", ".join(parts) + ".") if parts else ""
 
 
 class UpdatesPage(Page):
@@ -1601,6 +1629,14 @@ class SettingsPage(Page):
         allp.currentIndexChanged.connect(lambda: settings.save(all_platforms=allp.currentData()))
         box.addWidget(allp)
 
+        box = self._box("My apps")
+        sync = QCheckBox("Keep My apps in sync with the apps on this computer")
+        sync.setChecked(bool(s.get("sync_system_apps")))
+        sync.toggled.connect(self._toggle_sync)
+        box.addWidget(sync)
+        box.addWidget(label("Apps you install show up in My apps by themselves, and apps you uninstall go away. Apps you delete "
+                            "from My apps stay deleted.", muted=True, wrap=True))
+
         if sysinfo.os == "linux" and selfinstall.running_installed():
             box = self._box("Flathub links")
             fh = QComboBox()
@@ -1655,6 +1691,13 @@ class SettingsPage(Page):
         lay.addWidget(label(title, h2=True))
         self.body.addWidget(f)
         return lay
+
+    def _toggle_sync(self, on):
+        if on:
+            library.import_system(library.scan_system())
+        else:
+            library.stop_syncing_system(delete=False)
+        self.win.refresh_app_watcher()
 
     def _check(self):
         self.upd.setText("Checking…")
@@ -1760,6 +1803,18 @@ class MainWindow(QMainWindow):
         self.update_account()
         QTimer.singleShot(1500, self._background_checks)
         QTimer.singleShot(300, self._auto_sign_in)
+        # My apps keeps up with the apps on this computer (when that's on)
+        self._syncing = False
+        self._last_sync = 0.0
+        self.app_watcher = QFileSystemWatcher(self)
+        self.app_watcher.directoryChanged.connect(lambda _: self._sync_soon.start())
+        self._sync_soon = QTimer(self, singleShot=True, interval=3000)   # installs touch many files at once
+        self._sync_soon.timeout.connect(lambda: self.sync_system_apps(force=True))
+        self._sync_timer = QTimer(self, interval=5 * 60 * 1000)
+        self._sync_timer.timeout.connect(lambda: self.sync_system_apps(force=True))
+        self._sync_timer.start()
+        self.refresh_app_watcher()
+        QTimer.singleShot(2500, lambda: self.sync_system_apps(force=True))
 
     # navigation
     def _nav_changed(self, row):
@@ -1893,6 +1948,36 @@ class MainWindow(QMainWindow):
 
     def set_update_count(self, n):
         self.nav.item(self.NAV.index("Updates")).setText(f"Updates  ({n})" if n else "Updates")
+
+    def refresh_app_watcher(self):
+        """Watch the folders apps get installed to while syncing is on."""
+        if self.app_watcher.directories():
+            self.app_watcher.removePaths(self.app_watcher.directories())
+        if settings.load().get("sync_system_apps"):
+            dirs = library.watch_dirs()
+            if dirs:
+                self.app_watcher.addPaths(dirs)
+
+    def sync_system_apps(self, force=False):
+        """Bring My apps up to date with this computer, in the background (at most every 30 seconds unless forced)."""
+        import time as _time
+        if getattr(self, "_syncing", True) or not settings.load().get("sync_system_apps"):
+            return
+        if not force and _time.time() - self._last_sync < 30:
+            return
+        self._syncing = True
+        self._last_sync = _time.time()
+
+        def done(r):
+            self._syncing = False
+            page = self.pages.get("My apps")
+            if (r["added"] or r["removed"] or r["updated"]) and page is not None and self.stack.currentWidget() is page:
+                page._render()
+                page.status.setText(_sync_text(r))
+
+        def failed(_e):
+            self._syncing = False
+        run_async(lambda ctx: library.sync_system(), done, failed)
 
     def _background_checks(self):
         recs = installed.store_installed()
