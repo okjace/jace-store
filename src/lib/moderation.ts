@@ -1,4 +1,5 @@
 import { createAdminClient } from "./supabase/admin";
+import { cancelSubscriptions } from "./payments";
 import { removeStored } from "./fileStorage";
 
 export { REPORT_REASONS, reasonLabel } from "./moderation-reasons";
@@ -14,6 +15,7 @@ export async function deleteProjectCompletely(projectId: string) {
   const admin = createAdminClient();
   const { data: versions } = await admin.from("versions").select("files(*)").eq("project_id", projectId);
   const files = (versions ?? []).flatMap((v) => v.files as { storage_path: string | null; storage?: string | null; size?: number | null }[]);
+  await cancelSubscriptions({ projectId });          // nobody keeps paying for a project that's gone
   const { error } = await admin.from("projects").delete().eq("id", projectId);
   if (error) throw new Error(error.message);
   await removeStored(files);

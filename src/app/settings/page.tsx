@@ -6,10 +6,13 @@ import DeleteAccount from "@/components/settings/DeleteAccount";
 import UseJaceHandle from "@/components/settings/UseJaceHandle";
 import { currentJaceUsername } from "@/lib/accountModeration";
 import { createAdminClient } from "@/lib/supabase/admin";
+import PaymentSettings, { type PurchaseRow } from "@/components/settings/PaymentSettings";
+import SellingSettings, { type SaleRow } from "@/components/settings/SellingSettings";
+import { paymentsReady, refreshSeller } from "@/lib/payments";
 
 export const metadata = { title: "Account settings" };
 
-export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ linked?: string; error?: string }> }) {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ linked?: string; error?: string; saved?: string }> }) {
   const sp = await searchParams;
   const { supabase, user } = await requireUser("/settings");
   const [{ data: profile }, { data: jace }, { count: projectCount }] = await Promise.all([
@@ -27,6 +30,15 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       jaceName = live;
     }
   }
+  // payments (migration 014): what I bought, and what I sold
+  const admin = createAdminClient();
+  const available = paymentsReady();
+  const [{ data: bought }, { data: sold }, seller] = await Promise.all([
+    admin.from("purchases").select("*, project:projects(slug, title)").eq("user_id", user.id).order("created_at", { ascending: false }).limit(100),
+    admin.from("purchases").select("*, project:projects!inner(slug, title, owner_id), buyer:profiles(username)")
+      .eq("project.owner_id", user.id).order("created_at", { ascending: false }).limit(100),
+    available ? refreshSeller(user.id).catch(() => null) : Promise.resolve(null),
+  ]);
   const handleDiffers = !!jaceName && profile && jaceName.toLowerCase() !== String(profile.username).toLowerCase();
 
   return (
@@ -63,6 +75,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         {sp.linked === "jace" && <p className="text-sm text-brand">Jace connected.</p>}
         {sp.error && <p className="text-sm text-red-300">{sp.error}</p>}
       </section>
+      <PaymentSettings purchases={(bought ?? []) as PurchaseRow[]} saved={sp.saved === "1"} />
+      <SellingSettings available={available} connected={!!seller?.account_id} ready={!!seller?.charges_enabled}
+        payouts={!!seller?.payouts_enabled} sales={(sold ?? []) as SaleRow[]} />
       <div className="card p-6 text-sm">
         <h2 className="text-lg font-bold">Developer</h2>
         <p className="mt-1 text-muted">Publish from scripts, CI or an AI assistant.</p>

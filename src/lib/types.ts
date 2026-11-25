@@ -11,6 +11,11 @@ export interface Profile {
 
 export interface Project {
   id: string;
+  /** Paid projects (migration 014; see lib/pricing.ts). */
+  price_type?: "free" | "one_time" | "subscription";
+  price_cents?: number | null;
+  pay_what_you_want?: boolean;
+  sub_interval?: "month" | "year" | null;
   /** Dependencies for every version (migration 013; see lib/depResolve.ts). */
   auto_dependencies?: import("./dependencyTypes").AutoDependency[];
   slug: string;
@@ -42,6 +47,8 @@ export interface FileRow {
   version_id: string;
   filename: string;
   storage_path: string | null;
+  /** supabase | r2 | private (migrations 012, 014) */
+  storage?: string;
   url: string;
   size: number | null;
   sha1: string | null;

@@ -755,6 +755,9 @@ class ProjectPage(Page):
         col.addWidget(label(" · ".join(x for x in (data.get("type_label"), data.get("author") and f"by {data['author']}",
                                                      f"{fmt_num(data.get('downloads'))} downloads") if x), muted=True))
         col.addWidget(label(data.get("summary", ""), wrap=True))
+        price = data.get("price")
+        if price:
+            col.addWidget(label(("You have this · " if data.get("access") else "") + f"Price: {price.get('label')}", muted=True))
         head.addLayout(col, 1)
         actions_col = QVBoxLayout()
         self.main_btn = button("", primary=True)
@@ -870,6 +873,11 @@ class ProjectPage(Page):
             self.main_btn.setEnabled(False)
             return
         self.main_btn.setEnabled(bool(self.res))
+        price = self.data.get("price")
+        if price and not self.data.get("access"):
+            self.main_btn.setText(f"Sign in to buy · {price.get('label')}" if not account.load() else f"Buy · {price.get('label')}")
+            self.main_btn.setEnabled(True)
+            return
         if rec and self.res and rec.get("version_id") != self.res["version"]["id"]:
             self.main_btn.setText(f"Update to {self.res['version']['version_number']}")
         elif rec and rec.get("launch"):
@@ -886,6 +894,15 @@ class ProjectPage(Page):
             self.second_btn.setToolTip("" if can else "Jace Store didn't install this itself; uninstall it in your system settings.")
 
     def _main_action(self):
+        price = self.data.get("price") if self.data else None
+        if price and not self.data.get("access"):
+            if not account.load():
+                self.win.sign_in()
+                return
+            # buying happens on the website (Stripe checkout); come back and it installs
+            webbrowser.open(f"{self.data.get('page_url') or STORE_URL + '/project/' + self.data['slug']}?buy=1")
+            QMessageBox.information(self, APP_NAME, "Finish buying in your browser, then come back and open this page again to install it.")
+            return
         rec = self.record()
         if rec and rec.get("launch") and self.res and rec.get("version_id") == self.res["version"]["id"]:
             if not installer.launch(rec):

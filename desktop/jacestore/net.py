@@ -26,7 +26,17 @@ def download(url: str, dest: Path, progress=None, sha1: str | None = None, cance
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_name(dest.name + ".part")
     h = hashlib.sha1()
-    with session.get(url, stream=True, timeout=30, allow_redirects=True) as r:
+    headers = {}
+    if url.startswith(STORE_URL.rstrip("/") + "/"):
+        from jacestore import account
+        headers = account.headers()       # paid projects: downloads need the buyer's sign-in
+    with session.get(url, stream=True, timeout=30, allow_redirects=True, headers=headers) as r:
+        if r.status_code in (401, 402):
+            try:
+                msg = r.json().get("description")
+            except ValueError:
+                msg = None
+            raise RuntimeError(msg or "This is a paid project: buy it on Jace Store first (and sign in here).")
         r.raise_for_status()
         total = int(r.headers.get("Content-Length") or 0) or None
         done = 0

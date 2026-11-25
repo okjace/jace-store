@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { siteUrl } from "./constants";
 import type { FileRow, Project, Version } from "./types";
+import { priceOut } from "./pricing";
 
 /**
  * Serializers that follow the shape of Modrinth's v2 API so that existing
@@ -95,6 +96,8 @@ export function serializeProject(p: Project, versionIds: string[] = []) {
     updated: p.updated_at,
     versions: versionIds,
     page_url: `${siteUrl()}/project/${p.slug}`,
+    /** Paid projects: their price (downloads need the buyer's sign-in). Null when free. */
+    price: priceOut(p),
   };
 }
 

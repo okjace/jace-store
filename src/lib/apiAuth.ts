@@ -44,6 +44,15 @@ export async function requireApiUser(req: Request): Promise<string> {
   return user.id;
 }
 
+/** Like requireApiUser, but null when nobody (or an invalid token) is signed in. */
+export async function optionalApiUser(req: Request): Promise<string | null> {
+  try {
+    return await requireApiUser(req);
+  } catch {
+    return null;
+  }
+}
+
 /** Load a project by slug or id and make sure `userId` owns it. */
 export async function ownedProject(userId: string, slugOrId: string) {
   const admin = createAdminClient();

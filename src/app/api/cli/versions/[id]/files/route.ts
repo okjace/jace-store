@@ -3,7 +3,9 @@ import { ApiError, handler, ownedVersion, readJson, requireApiUser } from "@/lib
 import { addLinkFile, type LinkInput } from "@/lib/linkFiles";
 import { fileOut } from "@/lib/cliSerialize";
 import { installFields } from "@/lib/fileFormats";
-import { confirmUpload } from "@/lib/fileStorage";
+import { confirmUpload, gatedUrl } from "@/lib/fileStorage";
+import { projectPricing } from "@/lib/payments";
+import { isPaid } from "@/lib/pricing";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const maxDuration = 300;
@@ -26,7 +28,10 @@ export const POST = handler(async (req, { params }: { params: Promise<{ id: stri
   const inst = installFields(b);
   if ("error" in inst) throw new ApiError(400, inst.error);
   const path = String(b.path ?? "");
-  const provider = b.provider === "r2" ? "r2" : "supabase";
+  const provider = b.provider === "r2" ? "r2" : b.provider === "private" ? "private" : "supabase";
+  if (isPaid((await projectPricing(v.project.id)) ?? {}) !== (provider === "private")) {
+    throw new ApiError(409, "This project's price just changed. Upload the file again.");
+  }
   const mine = `${userId}/${v.project.id}/${v.id}/`;
   if (!(provider === "r2" ? path.includes(`/${mine}`) : path.startsWith(mine)) || path.includes("..")) {
     throw new ApiError(400, "path doesn't belong to this version");
@@ -52,8 +57,8 @@ export const POST = handler(async (req, { params }: { params: Promise<{ id: stri
       filename: String(b.filename ?? name),
       label: (b.label as string) || null,
       storage_path: path,
-      ...(provider === "r2" ? { storage: "r2" } : {}),
-      url,
+      ...(provider !== "supabase" ? { storage: provider } : {}),
+      url: url || "pending",
       size,
       sha1,
       sha512,
@@ -64,5 +69,9 @@ export const POST = handler(async (req, { params }: { params: Promise<{ id: stri
     .select()
     .single();
   if (error) throw new ApiError(400, error.message);
+  if (provider === "private") {
+    data.url = gatedUrl(data.id);
+    await admin.from("files").update({ url: data.url }).eq("id", data.id);
+  }
   return fileOut(data);
 });

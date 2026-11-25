@@ -91,7 +91,7 @@ export default function VersionUploader({ project }: { project: Project; userId?
           if (!put.ok) throw new Error(`Uploading ${f.name} failed (${put.status})`);
         } else {
           const token = new URL(target.upload_url).searchParams.get("token") ?? "";
-          const { error: upErr } = await supabase.storage.from("project-files").uploadToSignedUrl(target.path, token, f, {
+          const { error: upErr } = await supabase.storage.from(target.provider === "private" ? "paid-files" : "project-files").uploadToSignedUrl(target.path, token, f, {
             contentType: f.type || "application/octet-stream",
           });
           if (upErr) throw new Error(`Uploading ${f.name} failed: ${upErr.message}`);

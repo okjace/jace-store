@@ -1,4 +1,5 @@
 import { removeStored } from "@/lib/fileStorage";
+import { cancelSubscriptions } from "@/lib/payments";
 import { ApiError, handler, readJson } from "@/lib/apiAuth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -45,8 +46,11 @@ export const POST = handler(async (req) => {
   const { data: projects } = await admin.from("projects").select("id, versions!versions_project_id_fkey(files(*))").eq("owner_id", user.id);
   const rows = (projects ?? []).flatMap((p) =>
     (p.versions as { files: { storage_path: string | null; storage?: string | null; size?: number | null }[] }[]).flatMap((v) => v.files));
-  await removeStored(rows.filter((f) => f.storage === "r2"));        // Cloudflare R2 files (and their space back)
-  const tracked = rows.filter((f) => f.storage !== "r2").map((f) => f.storage_path).filter(Boolean) as string[];
+  // stop the account's subscriptions, and subscriptions to its projects
+  await cancelSubscriptions({ userId: user.id });
+  for (const p of projects ?? []) await cancelSubscriptions({ projectId: p.id });
+  await removeStored(rows.filter((f) => f.storage === "r2" || f.storage === "private"));   // R2 (space back) and paid files
+  const tracked = rows.filter((f) => f.storage !== "r2" && f.storage !== "private").map((f) => f.storage_path).filter(Boolean) as string[];
   const projectFiles = [...new Set([...tracked, ...(await listAll(admin, "project-files", user.id))])];
   const images = await listAll(admin, "icons", user.id);
   for (let i = 0; i < projectFiles.length; i += 500) await admin.storage.from("project-files").remove(projectFiles.slice(i, i + 500));

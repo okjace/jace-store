@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Project } from "@/lib/types";
 import { formatNumber, timeAgo, typeInfo } from "@/lib/constants";
 import ProjectIcon from "./ProjectIcon";
+import { priceLabel } from "@/lib/pricing";
 
 export default function ProjectCard({ project }: { project: Project }) {
   return (
@@ -18,6 +19,7 @@ export default function ProjectCard({ project }: { project: Project }) {
         <p className="mt-0.5 line-clamp-2 text-sm text-muted">{project.summary}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
           <span className="chip chip-on">{typeInfo(project.type).icon} {typeInfo(project.type).label}</span>
+          {priceLabel(project) && <span className="chip border-amber-300/50 text-amber-300">{priceLabel(project)}</span>}
           {project.loaders.slice(0, 3).map((l) => (
             <span key={l} className="chip capitalize">{l}</span>
           ))}

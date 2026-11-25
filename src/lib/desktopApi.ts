@@ -2,6 +2,7 @@ import { createPublicClient } from "./supabase/server";
 import { siteUrl, typeInfo } from "./constants";
 import { DESKTOP_TYPES, fileInstallInfo, fitScore, type Client } from "./fileFormats";
 import type { FileRow, Project, Version } from "./types";
+import { priceOut } from "./pricing";
 
 /**
  * Desktop app API (v1): apps and games from the store, with every file described
@@ -56,6 +57,8 @@ export function desktopHit(p: Project) {
     platforms: p.loaders,
     updated_at: p.updated_at,
     page_url: `${siteUrl()}/project/${p.slug}`,
+    /** Paid projects: their price (downloads need the buyer's sign-in). Null when free. */
+    price: priceOut(p),
   };
 }
 

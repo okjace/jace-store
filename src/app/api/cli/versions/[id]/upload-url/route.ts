@@ -1,6 +1,8 @@
 import { requireCanPost } from "@/lib/accountModeration";
 import { ApiError, handler, ownedVersion, readJson, requireApiUser } from "@/lib/apiAuth";
 import { uploadTarget } from "@/lib/fileStorage";
+import { projectPricing } from "@/lib/payments";
+import { isPaid } from "@/lib/pricing";
 
 /**
  * POST { filename, size? } -> { upload_url, path, provider, headers }
@@ -17,7 +19,8 @@ export const POST = handler(async (req, { params }: { params: Promise<{ id: stri
   const n = Number(size);
   if (size != null && !(n > 0 && n <= 500 * 1024 * 1024)) throw new ApiError(400, "Files can be up to 500 MB");
   try {
-    return await uploadTarget(userId, v.project.id, v.id, filename, size == null ? null : n);
+    const paid = isPaid((await projectPricing(v.project.id)) ?? {});   // paid projects' files are kept private
+    return await uploadTarget(userId, v.project.id, v.id, filename, size == null ? null : n, paid);
   } catch (e) {
     throw new ApiError(500, e instanceof Error ? e.message : "Couldn't create upload URL");
   }

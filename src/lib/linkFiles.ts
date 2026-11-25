@@ -3,6 +3,8 @@ import { ApiError } from "./apiAuth";
 import { installFields } from "./fileFormats";
 import { typeInfo } from "./constants";
 import { createAdminClient } from "./supabase/admin";
+import { projectPricing } from "./payments";
+import { isPaid } from "./pricing";
 
 const MAX_HASH_BYTES = 500 * 1024 * 1024;
 
@@ -66,6 +68,10 @@ export interface LinkInput {
  * Modrinth App) refuse files without a verified SHA-1/SHA-512.
  */
 export async function addLinkFile(version: { id: string; project: { type: string } }, input: LinkInput) {
+  const { data: v } = await createAdminClient().from("versions").select("project_id").eq("id", version.id).maybeSingle();
+  if (v && isPaid((await projectPricing(v.project_id)) ?? {})) {
+    throw new ApiError(400, "Paid projects can't use links: anyone could open them. Upload the file instead.");
+  }
   const u = checkLinkUrl(String(input.url ?? ""));
   const mc = typeInfo(version.project.type).minecraft;
   let { sha1, sha512, size } = input;

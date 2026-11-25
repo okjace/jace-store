@@ -7,6 +7,8 @@ import VersionUploader from "@/components/VersionUploader";
 import ManageVersions from "@/components/ManageVersions";
 import DownloadSettings from "@/components/DownloadSettings";
 import ProjectDependencies from "@/components/ProjectDependencies";
+import ProjectPricing from "@/components/ProjectPricing";
+import { paymentsReady, refreshSeller } from "@/lib/payments";
 import { typeInfo } from "@/lib/constants";
 
 export const metadata = { title: "Manage project" };
@@ -26,6 +28,9 @@ export default async function EditProject({
   const { data: versions } = await supabase
     .from("versions").select("*, files(*)").eq("project_id", project.id).order("created_at", { ascending: false });
 
+  const available = paymentsReady() && "price_type" in project;
+  const seller = available ? await refreshSeller(user.id).catch(() => null) : null;
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div className="flex items-center justify-between">
@@ -38,6 +43,7 @@ export default async function EditProject({
         <a href="#versions" className="chip hover:text-text">Versions</a>
         {typeInfo(project.type).minecraft && <a href="#dependencies" className="chip hover:text-text">Dependencies</a>}
         <a href="#download" className="chip hover:text-text">Download button</a>
+        <a href="#price" className="chip hover:text-text">Price</a>
         <a href="#settings" className="chip hover:text-text">Project settings</a>
       </nav>
       <VersionUploader project={project as Project} userId={user.id} />
@@ -51,6 +57,9 @@ export default async function EditProject({
       )}
       <div id="download" className="scroll-mt-24">
         <DownloadSettings project={project as Project} versions={(versions ?? []) as Version[]} />
+      </div>
+      <div id="price" className="scroll-mt-24">
+        <ProjectPricing project={project as Project} sellerReady={!!seller?.charges_enabled} available={available} />
       </div>
       <section id="settings" className="scroll-mt-24 space-y-3">
         <h2 className="text-lg font-bold">Project settings</h2>

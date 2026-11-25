@@ -1,6 +1,7 @@
 import { createPublicClient } from "./supabase/server";
 import { GAME_VERSIONS, PROJECT_TYPES, siteUrl, typeInfo } from "./constants";
 import type { FileRow, Project, Version } from "./types";
+import { priceOut } from "./pricing";
 
 /**
  * Launcher API (v1): a Minecraft-only, launcher-friendly view of the store.
@@ -80,6 +81,8 @@ export function launcherHit(p: Project) {
     created_at: p.created_at,
     updated_at: p.updated_at,
     page_url: `${siteUrl()}/project/${p.slug}`,
+    /** Paid projects: their price (downloads need the buyer's sign-in). Null when free. */
+    price: priceOut(p),
   };
 }
 

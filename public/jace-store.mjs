@@ -44,6 +44,9 @@ Commands:
                                       What the Download button does: newest version, a list of all
                                       versions, or always one primary version
   set-primary <slug> <versionId>      Shortcut for: download-mode <slug> primary --version <id>
+  price <slug> free | one-time <amount> [--pwyw] | subscription <amount> [--interval month|year]
+                                      Sell a project (amount in USD, e.g. 4.99). Needs Stripe connected
+                                      in Settings → Selling. Paid projects' files are only given to buyers.
   deps <slug> [--set modrinth:fabric-api,curseforge:jei:optional | --set none] [--refresh]
                                       Dependencies for every version (Minecraft): each version, now
                                       and later, gets the release of each mod that fits its Minecraft
@@ -79,7 +82,7 @@ function parseArgs(argv) {
   const pos = [];
   const flags = {};
   const multi = new Set(["file", "link"]);
-  const bool = new Set(["json", "primary", "primary-link", "skip-hash", "help", "refresh"]);
+  const bool = new Set(["json", "primary", "primary-link", "skip-hash", "help", "refresh", "pwyw"]);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (!a.startsWith("--")) { pos.push(a); continue; }
@@ -340,6 +343,21 @@ async function main() {
       const slug = need(pos[0], "<slug>");
       const body = { download_mode: "primary", primary_version_id: need(pos[1], "<versionId>") };
       out(await api(ctx, "PATCH", `/projects/${encodeURIComponent(slug)}`, body), (d) => `Primary version of ${d.slug} set`);
+      return;
+    }
+
+    case "price": {
+      const slug = encodeURIComponent(need(pos[0], "<slug>"));
+      const kind = need(pos[1], "free|one-time|subscription").replace("-", "_");
+      const body = { type: kind };
+      if (kind !== "free") {
+        body.price_cents = Math.round(Number(need(pos[2], "<amount>")) * 100);
+        if (flags.pwyw) body.pay_what_you_want = true;
+        if (flags.interval) body.interval = flags.interval;
+      }
+      out(await api(ctx, "PUT", `/projects/${slug}/pricing`, body), (d) =>
+        (d.price ? `Price: ${d.price.label}` : "Free") + (d.files_made_private ? ` (${d.files_made_private} files made private)` : "")
+        + (d.files_failed?.length ? `\nCouldn't move: ${d.files_failed.join("; ")}` : ""));
       return;
     }
 

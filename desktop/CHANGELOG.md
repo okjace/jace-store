@@ -1,5 +1,11 @@
 # Jace Store desktop: changelog
 
+## 1.6.0
+- Paid projects: their page shows the price and a Buy button, which finishes the purchase on the Jace
+  Store website (Stripe checkout). Come back and it installs like any other app.
+- Downloads from Jace Store use your sign-in, so paid apps you bought (or subscribe to) install and
+  update normally.
+
 ## 1.5.0
 - My apps: "Add all apps on this computer" now keeps syncing. Apps you install afterwards show up in
   My apps by themselves within a few seconds, apps you uninstall go away, and renamed apps or new icons

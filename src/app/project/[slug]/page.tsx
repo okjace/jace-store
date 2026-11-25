@@ -16,6 +16,9 @@ import Comments, { type CommentRow } from "@/components/Comments";
 import SaveToCollection from "@/components/SaveToCollection";
 import { currentState, restriction } from "@/lib/accountModeration";
 import { isAdmin } from "@/lib/moderation";
+import BuyButton from "@/components/BuyButton";
+import { purchaseFor } from "@/lib/payments";
+import { isPaid, money, priceLabel } from "@/lib/pricing";
 
 const PACKABLE = ["mod", "resourcepack", "shader"];
 
@@ -42,7 +45,12 @@ async function load(slug: string) {
         isAdmin(me),
       ])
     : [false, null, false];
+  // paid projects: whether this person bought it (or subscribes)
+  const paid = isPaid(project);
+  const purchase = paid && me && me !== project.owner_id ? await purchaseFor(me, project.id).catch(() => null) : null;
   return {
+    paid, purchase,
+    access: !paid || me === project.owner_id || !!purchase,
     project: project as Project,
     versions: (versions ?? []) as Version[],
     isOwner: me === project.owner_id,
@@ -57,10 +65,16 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return data ? { title: data.project.title, description: data.project.summary } : {};
 }
 
-export default async function ProjectPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ProjectPage({
+  params, searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ bought?: string }>;
+}) {
   const data = await load((await params).slug);
   if (!data) notFound();
-  const { project, versions, isOwner, signedIn, me, liked, notice, moderator, comments } = data;
+  const { bought } = await searchParams;
+  const { project, versions, isOwner, signedIn, me, liked, notice, moderator, comments, paid, purchase, access } = data;
   const loginHref = `/login?next=${encodeURIComponent(`/project/${project.slug}`)}`;
   const info = typeInfo(project.type);
   const mode = project.download_mode ?? "latest";
@@ -77,7 +91,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
   }));
   // "Requires" in the sidebar: every required dependency of the featured version.
   const requires = (featured?.dependencies ?? []).filter((d) => d.type === "required");
-  const download = (className?: string) => (
+  const buy = (className?: string) => (
+    <BuyButton slug={project.slug} price={project} signedIn={signedIn} loginHref={loginHref} className={className} />
+  );
+  const download = (className?: string) => !access ? buy(className) : (
     <DownloadButton mode={mode} file={featuredFile ?? null} versions={dlVersions} className={className}>
       {mode === "all" ? `Download (${versions.length} version${versions.length === 1 ? "" : "s"})` : "Download"}
     </DownloadButton>
@@ -85,12 +102,25 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
 
   return (
     <div className="space-y-6">
+      {bought && access && (
+        <p className="card border-brand/40 p-4 text-sm text-brand">
+          Thanks for {purchase?.kind === "subscription" ? "subscribing" : "buying"}! Download it below. It&apos;s also in Settings → Payments.
+        </p>
+      )}
       <header className="card flex flex-col gap-5 p-6 sm:flex-row sm:items-center">
         <ProjectIcon url={project.icon_url} title={project.title} type={project.type} size={96} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-3xl font-black">{project.title}</h1>
             <Link href={`/browse?type=${info.id}`} className="chip chip-on">{info.icon} {info.label}</Link>
+            {paid && <span className="chip border-amber-300/50 text-amber-300">{priceLabel(project)}</span>}
+            {purchase && (
+              <span className="chip chip-on">
+                {purchase.kind === "subscription"
+                  ? `Subscribed${purchase.current_period_end ? ` · ${purchase.cancel_at_period_end ? "ends" : "renews"} ${new Date(purchase.current_period_end).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}`
+                  : `Bought for ${money(purchase.amount_cents)}`}
+              </span>
+            )}
           </div>
           <p className="mt-1 text-muted">{project.summary}</p>
           <div className="mt-3 flex flex-wrap gap-4 text-sm text-muted">
@@ -105,6 +135,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
         </div>
         <div className="flex flex-wrap gap-2">
           {(featuredFile || (mode === "all" && versions.length > 0)) && download("btn-primary px-6! py-2.5! text-base")}
+          {!access && !featuredFile && buy("btn-primary px-6! py-2.5! text-base")}
           <LikeButton slug={project.slug} liked={liked} likes={project.likes ?? 0} signedIn={signedIn} loginHref={loginHref} />
           <SaveToCollection projectId={project.id} signedIn={signedIn} loginHref={loginHref} />
           {(DESKTOP_TYPES as readonly string[]).includes(project.type) && versions.length > 0 && (
@@ -164,7 +195,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {PACKABLE.includes(project.type) && (
+                      {PACKABLE.includes(project.type) && !paid && (
                         <AddToPackButton
                           item={{
                             versionId: v.id,
@@ -175,7 +206,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
                           }}
                         />
                       )}
-                      {v.files?.map((f) => (
+                      {!access && v.files?.map((f) => (
+                        <span key={f.id} className="chip cursor-default" title="Buy it to download">
+                          🔒 {short(f.label || f.filename)}{f.size ? ` (${formatBytes(f.size)})` : ""}
+                        </span>
+                      ))}
+                      {access && v.files?.map((f) => (
                         <a key={f.id} href={`/api/download/${f.id}`} rel={f.is_external ? "nofollow noopener" : undefined}
                           className={`${f.is_primary ? "btn-primary" : "btn-ghost"} px-3! py-1.5! text-xs`}
                           title={[f.is_external && `Link: ${new URL(f.url).hostname}`, f.sha1 && `sha1 ${f.sha1}`].filter(Boolean).join("\n")}>
@@ -200,7 +236,18 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
         </div>
 
         <aside className="space-y-4">
-          {featuredFile && (
+          {!access && (
+            <div className="card space-y-3 p-4 text-sm">
+              <div className="label">{project.price_type === "subscription" ? "Subscription" : "Paid project"}</div>
+              <p className="text-muted">
+                {project.price_type === "subscription"
+                  ? `${priceLabel(project)}: every version while you're subscribed. Cancel any time in Settings → Payments.`
+                  : "Buy it once and keep every version and update."} Paid securely with Stripe; the money goes to the creator (Jace Store takes nothing).
+              </p>
+              {buy("btn-primary w-full")}
+            </div>
+          )}
+          {featuredFile && access && (
             <InstallPanel
               type={project.type}
               title={project.title}

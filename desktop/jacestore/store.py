@@ -28,7 +28,8 @@ def search(q="", type_=None, category=None, sort="downloads", page=1, limit=24, 
 
 
 def project(slug: str) -> dict:
-    return get_json(f"{BASE}/project/{quote(slug)}")
+    from jacestore import account
+    return get_json(f"{BASE}/project/{quote(slug)}", headers=account.headers())
 
 
 def resolve(slug: str, channel="release") -> dict | None:
