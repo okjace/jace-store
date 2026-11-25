@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SITE_NAME } from "@/lib/constants";
+import RememberedAccounts from "@/components/RememberedAccounts";
 
 export const metadata = { title: "Sign in" };
 
@@ -13,7 +14,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <h1 className="text-2xl font-black">Sign in to {SITE_NAME}</h1>
         <p className="text-sm text-muted">Jace Store uses your Jace account. New here? Signing in makes your Jace Store account.</p>
         {error && <p className="text-sm text-amber-300">{error}</p>}
-        <a href={`/api/auth/jace/start?next=${encodeURIComponent(next)}`} className="btn-primary w-full py-3! text-base">Continue with Jace</a>
+        <RememberedAccounts next={next} />
+        <a href={`/api/auth/jace/start?next=${encodeURIComponent(next)}`} className="btn-primary w-full py-3! text-base">Sign in with Jace</a>
+        <a href={`/api/auth/jace/start?add=1&next=${encodeURIComponent(next)}`} className="block text-xs text-muted underline hover:text-text">
+          Use a different Jace account
+        </a>
         <p className="text-xs text-muted">
           No Jace account? <a href="https://jaceo.vercel.app" className="underline hover:text-text">Make one on Jace</a>.
           Made your Jace Store account with email or GitHub? Sign in with a Jace account that has the same (verified) email,

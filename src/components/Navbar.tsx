@@ -2,18 +2,17 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { GROUPS, SITE_NAME } from "@/lib/constants";
 import PackCount from "./PackCount";
+import AccountMenu from "./AccountMenu";
 
 export default async function Navbar() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  let username: string | null = null;
-  let displayName: string | null = null;
+  let me: { username: string | null; display_name: string | null; picture: string | null } | null = null;
   if (user) {
-    const { data } = await supabase.from("profiles").select("username, display_name").eq("id", user.id).single();
-    username = data?.username ?? null;
-    displayName = data?.display_name?.trim() || null;
+    const { data } = await supabase.from("profiles").select("username, display_name, avatar_url").eq("id", user.id).single();
+    me = { username: data?.username ?? null, display_name: data?.display_name?.trim() || null, picture: data?.avatar_url ?? null };
   }
   const sections = GROUPS.filter((g) => g.id !== "other");
 
@@ -37,16 +36,8 @@ export default async function Navbar() {
           <Link href="/pack" className="btn-ghost hidden px-3! sm:inline-flex" title="Minecraft pack builder">
             Pack <PackCount />
           </Link>
-          {user ? (
-            <>
-              <Link href="/new" className="btn-primary">Upload</Link>
-              <Link href="/dashboard" className="btn-ghost max-w-48 truncate" title={username ? `@${username}` : undefined}>
-                {displayName ?? username ?? "Dashboard"}
-              </Link>
-            </>
-          ) : (
-            <Link href="/login" className="btn-primary">Sign in</Link>
-          )}
+          {user && <Link href="/new" className="btn-primary">Upload</Link>}
+          <AccountMenu me={me} />
         </div>
       </div>
       <nav className="flex gap-1 overflow-x-auto border-t border-line px-4 py-2 text-sm md:hidden">

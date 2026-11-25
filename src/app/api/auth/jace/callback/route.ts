@@ -3,8 +3,9 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { JACE, jaceRedirectUri, normalizeUserinfo, STATE_COOKIE } from "@/lib/jaceOAuth";
-import { jaceStoreUserFor } from "@/lib/jaceAccounts";
+import { JACE, jaceRedirectUri, STATE_COOKIE } from "@/lib/jaceOAuth";
+import { fetchUserinfo, signInWithJace } from "@/lib/jaceSignIn";
+import { tokenFrom } from "@/lib/jaceDevice";
 
 /**
  * Finish "Sign in with Jace" (or "Link Jace" from account settings):
@@ -17,7 +18,7 @@ import { jaceStoreUserFor } from "@/lib/jaceAccounts";
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const cookieStore = await cookies();
-  let saved: { state?: string; next?: string; mode?: string } = {};
+  let saved: { state?: string; next?: string; mode?: string; silent?: boolean } = {};
   try {
     saved = JSON.parse(cookieStore.get(STATE_COOKIE)?.value ?? "{}");
   } catch {}
@@ -32,6 +33,10 @@ export async function GET(request: Request) {
   const fail = (msg: string) =>
     finish(linking ? `/settings?error=${encodeURIComponent(msg)}#sign-in` : `/login?error=${encodeURIComponent(msg)}`);
 
+  // Silent sign-in (prompt=none) that Jace couldn't do: not signed in to Jace (login_required) or
+  // automatic sign-in turned off for Jace Store (consent_required). Carry on signed out, no message;
+  // the "tried" cookie stops it from trying again for a while.
+  if (saved.silent && !url.searchParams.get("code")) return finish(safeNext(saved.next, "/"));
   if (url.searchParams.get("error")) {
     return fail(url.searchParams.get("error_description") || "Jace sign-in was cancelled");
   }
@@ -55,14 +60,12 @@ export async function GET(request: Request) {
   });
   const token = await tokenRes.json().catch(() => ({}));
   if (!tokenRes.ok || !token.access_token) {
-    return fail(token.error_description || token.error || "Couldn't get a token from Jace");
+    return saved.silent ? finish(safeNext(saved.next, "/")) : fail(token.error_description || token.error || "Couldn't get a token from Jace");
   }
-  const infoRes = await fetch(JACE.userinfo, {
-    headers: { Authorization: `Bearer ${token.access_token}`, Accept: "application/json" },
-    cache: "no-store",
-  });
-  const jace = normalizeUserinfo(await infoRes.json().catch(() => ({})));
-  if (!infoRes.ok || !jace) return fail("Couldn't read your Jace profile");
+  const info = await fetchUserinfo(token.access_token);
+  if (info.status === "banned") return fail("That Jace account is banned, so it can't sign in to Jace Store.");
+  if (info.status !== "ok") return saved.silent ? finish(safeNext(saved.next, "/")) : fail("Couldn't read your Jace profile");
+  const jace = info.jace;
 
   const admin = createAdminClient();
   const supabase = await createClient();
@@ -83,19 +86,8 @@ export async function GET(request: Request) {
     return finish(safeNext(saved.next, "/settings") + "?linked=jace#sign-in");
   }
 
-  // 2b. Sign in.
-  const userId = await jaceStoreUserFor(jace);
-  if (!userId) return fail("Couldn't create your account");
-  const { data: target } = await admin.auth.admin.getUserById(userId);
-  const email = target.user?.email;
-  if (!email) return fail("This account has no email to sign in with");
-
-  const link = await admin.auth.admin.generateLink({ type: "magiclink", email });
-  const tokenHash = link.data?.properties?.hashed_token;
-  if (link.error || !tokenHash) return fail("Couldn't start your session");
-  const { error } = await supabase.auth.verifyOtp({ type: "email", token_hash: tokenHash });
-  if (error) return fail(error.message);
-
-  await currentState(userId, true).catch(() => null);         // bring over a Jace ban / mute right away
+  // 2b. Sign in (also: added another account, or signed an account in again), and remember it on this device.
+  const done = await signInWithJace(jace, tokenFrom(token));
+  if ("error" in done) return fail(done.error);
   return finish(safeNext(saved.next, "/dashboard"));
 }
